@@ -1,0 +1,204 @@
+{
+  "name": "nola main AI agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nola",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.body.message }}",
+        "options": {
+          "systemMessage": "={{ $env.NOLA_SYSTEM_PROMPT }}\n\nCurrent user: {{ $json.body.author }}\nSource: {{ $json.body.source }}"
+        }
+      },
+      "id": "nola-agent",
+      "name": "NOLA AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.NOLA_MODEL }}",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "claude-model",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [460, 520],
+      "credentials": {
+        "anthropicApi": {
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "get_ups_status",
+        "description": "Get the current UPS (uninterruptible power supply) status including battery level, load percentage, runtime remaining, and whether the UPS is on battery or utility power. Use this when the user asks about power, UPS, battery backup, or outages.",
+        "jsCode": "// Connect to apcupsd TCP status port\nconst net = require('net');\nconst UPS_HOST = process.env.UPS_HOST || '10.0.0.1';\nconst UPS_PORT = parseInt(process.env.UPS_PORT || '3551');\n\nfunction readApcupsd() {\n  return new Promise((resolve, reject) => {\n    const client = net.createConnection(UPS_PORT, UPS_HOST, () => {\n      // apcupsd status command: 6-byte header + 'status'\n      const cmd = Buffer.alloc(8);\n      cmd.writeUInt16BE(6, 0);\n      cmd.write('status', 2);\n      client.write(cmd);\n    });\n\n    let data = Buffer.alloc(0);\n    client.on('data', chunk => { data = Buffer.concat([data, chunk]); });\n    client.on('end', () => resolve(data.toString('ascii')));\n    client.on('error', reject);\n    setTimeout(() => { client.destroy(); reject(new Error('apcupsd timeout')); }, 5000);\n  });\n}\n\ntry {\n  const raw = await readApcupsd();\n  const lines = raw.split('\\n').filter(l => l.trim());\n  const kv = {};\n  for (const line of lines) {\n    const idx = line.indexOf(':');\n    if (idx > 0) kv[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();\n  }\n\n  const status   = kv['STATUS']   || 'UNKNOWN';\n  const bcharge  = kv['BCHARGE']  || '?';\n  const loadpct  = kv['LOADPCT']  || '?';\n  const timeleft = kv['TIMELEFT'] || '?';\n  const model    = kv['MODEL']    || 'UPS';\n\n  return `${model}: ${status} | Battery ${bcharge} | Load ${loadpct} | Runtime ${timeleft}`;\n} catch (err) {\n  return `UPS check failed: ${err.message}`;\n}"
+      },
+      "id": "tool-ups",
+      "name": "get_ups_status",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [240, 520]
+    },
+    {
+      "parameters": {
+        "name": "get_netdata_metrics",
+        "description": "Get current system metrics (CPU, RAM, disk, uptime, network) from a specific host via Netdata. Specify the host name. Available hosts are configured in NETDATA_HOSTS env var.",
+        "method": "GET",
+        "url": "={{ (() => { const hosts = {}; ($env.NETDATA_HOSTS || '').split(',').forEach(h => { const [n,u] = h.split(':http'); if(n && u) hosts[n.trim()] = 'http'+u.trim(); }); return hosts[$parameter.host] || Object.values(hosts)[0] || 'http://localhost:19999'; })() }}/api/v1/allmetrics?format=json",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "host",
+              "description": "Host name to query (e.g. host1, host2)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "tool-netdata",
+      "name": "get_netdata_metrics",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [360, 520]
+    },
+    {
+      "parameters": {
+        "name": "query_prometheus",
+        "description": "Run a PromQL query against Prometheus to get metrics. Use this for CPU, memory, disk, network, uptime, or any custom metrics. Returns the raw query result. Example queries: up{job=\"node\"}, 100 - (avg by (instance)(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+        "method": "GET",
+        "url": "={{ $env.PROMETHEUS_URL }}/api/v1/query",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "description": "PromQL query string"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "tool-prometheus",
+      "name": "query_prometheus",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [580, 520]
+    },
+    {
+      "parameters": {
+        "name": "run_command",
+        "description": "Run a shell command on an allowed homelab host via SSH. Only use for safe, read-only commands unless the user explicitly confirms a destructive action. Allowed hosts are defined in SSH_ALLOWED_HOSTS.",
+        "workflowId": "={{ $env.WORKFLOW_ID_RUN_COMMAND }}",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "host": "={{ $parameter.host }}",
+            "command": "={{ $parameter.command }}"
+          }
+        },
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "host",
+              "description": "Target host label (must be in SSH_ALLOWED_HOSTS)"
+            },
+            {
+              "name": "command",
+              "description": "Shell command to run"
+            }
+          ]
+        }
+      },
+      "id": "tool-run-command",
+      "name": "run_command",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1,
+      "position": [700, 520]
+    },
+    {
+      "parameters": {
+        "name": "post_to_discord",
+        "description": "Post a message to the Discord alert channel. Use this to send notifications, alerts, or summaries that the user should see even if they didn't ask a question.",
+        "jsCode": "const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;\nif (!WEBHOOK_URL) return 'Discord webhook URL not configured (set DISCORD_WEBHOOK_URL)';\n\nconst message = $parameter.message;\nconst response = await $helpers.httpRequest({\n  method: 'POST',\n  url: WEBHOOK_URL,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ content: message })\n});\nreturn `Posted to Discord (status: ${response.statusCode || 'ok'})`;"
+      },
+      "id": "tool-post-discord",
+      "name": "post_to_discord",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [820, 520]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "NOLA AI Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [{ "node": "NOLA AI Agent", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "get_ups_status": {
+      "ai_tool": [
+        [{ "node": "NOLA AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "get_netdata_metrics": {
+      "ai_tool": [
+        [{ "node": "NOLA AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "query_prometheus": {
+      "ai_tool": [
+        [{ "node": "NOLA AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "run_command": {
+      "ai_tool": [
+        [{ "node": "NOLA AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "post_to_discord": {
+      "ai_tool": [
+        [{ "node": "NOLA AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["nola"]
+}

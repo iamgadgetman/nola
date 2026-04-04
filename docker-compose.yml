@@ -1,0 +1,77 @@
+version: "3.8"
+
+volumes:
+  n8n_storage:
+  postgres_storage:
+  ollama_storage:
+  qdrant_storage:
+
+networks:
+  default:
+    name: nola_network
+
+x-shared-n8n: &shared-n8n
+  restart: unless-stopped
+  image: docker.n8n.io/n8nio/n8n
+  environment:
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=postgres
+    - DB_POSTGRESDB_PORT=5432
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-nola}
+    - DB_POSTGRESDB_USER=${POSTGRES_USER:-nola}
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+    - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    - N8N_HOST=${N8N_HOST:-localhost}
+    - N8N_PORT=5678
+    - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+    - WEBHOOK_URL=${N8N_WEBHOOK_BASE_URL}
+    - EXECUTIONS_PROCESS=main
+    - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+    - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
+    - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+    - N8N_METRICS=true
+    - GENERIC_TIMEZONE=${TIMEZONE:-America/Los_Angeles}
+  links:
+    - postgres
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-nola}
+      - POSTGRES_USER=${POSTGRES_USER:-nola}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_storage:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nola} -d ${POSTGRES_DB:-nola}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    <<: *shared-n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_storage:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_storage:/root/.ollama
+    profiles:
+      - local-ai
+
+  qdrant:
+    image: qdrant/qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    profiles:
+      - local-ai

@@ -1,0 +1,141 @@
+{
+  "name": "nola — proactive monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "minutes", "minutesInterval": 5 }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Query all configured Netdata hosts in parallel\nconst hostString = process.env.NETDATA_HOSTS || '';\nif (!hostString) return [{ json: { alerts: ['NETDATA_HOSTS not configured'], isCritical: false } }];\n\nconst hosts = {};\nhostString.split(',').forEach(h => {\n  const colonIdx = h.indexOf(':http');\n  if (colonIdx > 0) {\n    const name = h.slice(0, colonIdx).trim();\n    const url  = 'http' + h.slice(colonIdx + 1).trim();\n    hosts[name] = url;\n  }\n});\n\nconst THRESHOLDS = {\n  cpu:    85,  // %\n  ram:    90,  // %\n  disk:   85,  // %\n  uptime: 900  // seconds — flag if uptime < 15min (recently rebooted)\n};\n\nconst alerts = [];\n\nawait Promise.all(Object.entries(hosts).map(async ([name, baseUrl]) => {\n  try {\n    const resp = await $helpers.httpRequest({\n      method: 'GET',\n      url: `${baseUrl}/api/v1/allmetrics?format=json`,\n      timeout: 8000\n    });\n    const d = typeof resp === 'string' ? JSON.parse(resp) : resp;\n\n    // CPU\n    const cpuIdle = d?.['system.cpu']?.dimensions?.idle?.value;\n    if (cpuIdle !== undefined) {\n      const cpuUsed = 100 - cpuIdle;\n      if (cpuUsed > THRESHOLDS.cpu) alerts.push(`⚠️ ${name}: CPU ${cpuUsed.toFixed(1)}% (threshold ${THRESHOLDS.cpu}%)`);\n    }\n\n    // RAM\n    const ramUsed = d?.['system.ram']?.dimensions?.used?.value;\n    const ramFree = d?.['system.ram']?.dimensions?.free?.value;\n    const ramBuff = (d?.['system.ram']?.dimensions?.buffers?.value || 0) + (d?.['system.ram']?.dimensions?.cached?.value || 0);\n    if (ramUsed !== undefined && ramFree !== undefined) {\n      const total = ramUsed + ramFree + ramBuff;\n      const pct   = total > 0 ? (ramUsed / total) * 100 : 0;\n      if (pct > THRESHOLDS.ram) alerts.push(`⚠️ ${name}: RAM ${pct.toFixed(1)}% used (threshold ${THRESHOLDS.ram}%)`);\n    }\n\n    // Uptime\n    const uptime = d?.['system.uptime']?.dimensions?.uptime?.value;\n    if (uptime !== undefined && uptime < THRESHOLDS.uptime) {\n      alerts.push(`🔔 ${name}: recently rebooted (uptime ${Math.round(uptime / 60)} min)`);\n    }\n\n  } catch (err) {\n    alerts.push(`🔴 ${name}: unreachable — ${err.message}`);\n  }\n}));\n\n// UPS check\ntry {\n  const net = require('net');\n  const UPS_HOST = process.env.UPS_HOST;\n  const UPS_PORT = parseInt(process.env.UPS_PORT || '3551');\n  if (UPS_HOST) {\n    const upsRaw = await new Promise((resolve, reject) => {\n      const client = net.createConnection(UPS_PORT, UPS_HOST, () => {\n        const cmd = Buffer.alloc(8);\n        cmd.writeUInt16BE(6, 0);\n        cmd.write('status', 2);\n        client.write(cmd);\n      });\n      let data = Buffer.alloc(0);\n      client.on('data', c => { data = Buffer.concat([data, c]); });\n      client.on('end', () => resolve(data.toString('ascii')));\n      client.on('error', reject);\n      setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 5000);\n    });\n    const kv = {};\n    upsRaw.split('\\n').forEach(line => {\n      const i = line.indexOf(':');\n      if (i > 0) kv[line.slice(0, i).trim()] = line.slice(i + 1).trim();\n    });\n    const status  = kv['STATUS']  || '';\n    const bcharge = parseFloat(kv['BCHARGE'] || '100');\n    if (status.includes('ONBATT')) {\n      alerts.push(`🔴 UPS ON BATTERY — battery ${bcharge}%`);\n    } else if (bcharge < 30) {\n      alerts.push(`🔴 UPS battery critically low: ${bcharge}%`);\n    }\n  }\n} catch (err) {\n  // UPS check failure is not itself an alert — host may not have UPS\n}\n\nconst isCritical = alerts.some(a =>\n  a.includes('ON BATTERY') ||\n  a.includes('battery critically low') ||\n  a.includes('unreachable')\n);\n\nreturn [{ json: { alerts, isCritical, alertCount: alerts.length } }];"
+      },
+      "id": "check-hosts",
+      "name": "Check All Hosts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.alertCount }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-alerts",
+      "name": "Any Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"🔔 **NOLA Proactive Monitor**\\n{{ $json.alerts.join('\\n') }}\"\n}",
+        "options": {}
+      },
+      "id": "post-discord",
+      "name": "Post Alerts to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [880, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isCritical }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-critical",
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call/phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.VAPI_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"assistantId\": \"{{ $env.VAPI_ASSISTANT_ID }}\",\n  \"phoneNumberId\": \"{{ $env.VAPI_PHONE_NUMBER_ID }}\",\n  \"customer\": { \"number\": \"{{ $env.ALERT_PHONE_NUMBER }}\" },\n  \"assistantOverrides\": {\n    \"firstMessage\": \"This is NOLA with a critical alert. {{ $('Check All Hosts').first().json.alerts.join('. ') }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "vapi-call",
+      "name": "VAPI Phone Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1100, 400]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [{ "node": "Check All Hosts", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check All Hosts": {
+      "main": [
+        [{ "node": "Any Alerts?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Any Alerts?": {
+      "main": [
+        [{ "node": "Post Alerts to Discord", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Post Alerts to Discord": {
+      "main": [
+        [{ "node": "Is Critical?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Critical?": {
+      "main": [
+        [{ "node": "VAPI Phone Call", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["nola", "monitor"]
+}

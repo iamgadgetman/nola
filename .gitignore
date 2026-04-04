@@ -1,0 +1,20 @@
+.env
+*.env
+*.key
+*.pem
+*.secret
+n8n_storage/
+postgres_storage/
+ollama_storage/
+qdrant_storage/
+__pycache__/
+*.pyc
+.DS_Store
+/tmp/
+
+# Internal planning docs (not for public repo)
+ORIGINAL_JEEVES_DUMP.md
+README_FIRST.md
+PROJECT_README.md
+SETUP_INSTRUCTIONS.md
+jeeves-main-workflow.json
