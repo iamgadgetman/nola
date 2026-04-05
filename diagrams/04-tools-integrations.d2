@@ -1,0 +1,233 @@
+##############################################################################
+# NOLA — Tools & Integrations
+# Every external system NOLA can read from or act on
+##############################################################################
+
+direction: right
+
+classes: {
+  tool: {
+    shape: rectangle
+    style.fill: "#581c87"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  endpoint: {
+    shape: rectangle
+    style.fill: "#1e3a5f"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  auth: {
+    shape: rectangle
+    style.fill: "#374151"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  data: {
+    shape: rectangle
+    style.fill: "#065f46"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  note: {
+    shape: rectangle
+    style.fill: "#fefce8"
+    style.font-color: "#334155"
+    style.border-radius: 4
+    style.stroke-dash: 3
+  }
+  agent: {
+    shape: rectangle
+    style.fill: "#7c2d12"
+    style.font-color: white
+    style.border-radius: 6
+    style.bold: true
+  }
+}
+
+agent: "NOLA Core Agent\n(LangChain + Claude)" {
+  class: agent
+}
+
+##############################################################################
+# MONITORING TOOLS
+##############################################################################
+
+monitoring: Monitoring & Metrics {
+  style.fill: "#f0fdf4"
+  style.stroke: "#16a34a"
+  style.border-radius: 10
+
+  netdata: Netdata {
+    style.fill: "#ecfdf5"
+    style.stroke: "#6ee7b7"
+    style.border-radius: 8
+
+    nd_tool: "get_netdata_metrics\nget_cpu_ram" { class: tool }
+    nd_hawk: "hawk\n10.0.11.100:19999\n/api/v1/allmetrics" { class: endpoint }
+    nd_fort: "fort\n10.0.18.100:19999\n/api/v1/allmetrics" { class: endpoint }
+    nd_data: "CPU % · RAM %\nNet in/out\nUptime string\nDisk I/O" { class: data }
+
+    nd_tool -> nd_hawk
+    nd_tool -> nd_fort
+    nd_hawk -> nd_data
+    nd_fort -> nd_data
+  }
+
+  prometheus: Prometheus {
+    style.fill: "#ecfdf5"
+    style.stroke: "#6ee7b7"
+    style.border-radius: 8
+
+    prom_tool: "query_prometheus\nPromQL" { class: tool }
+    prom_ep: "10.0.11.69:9090\n/api/v1/query\n/api/v1/query_range" { class: endpoint }
+    prom_data: "Scraper job health\nCustom metrics\nTime-series ranges" { class: data }
+
+    prom_tool -> prom_ep -> prom_data
+  }
+
+  loki: Loki {
+    style.fill: "#ecfdf5"
+    style.stroke: "#6ee7b7"
+    style.border-radius: 8
+
+    loki_tool: "query_loki\nLogQL" { class: tool }
+    loki_ep: "10.0.11.71:3100\n/loki/api/v1/query\n/loki/api/v1/query_range" { class: endpoint }
+    loki_data: "Log streams\nLabel filters\nTail N lines\nRegex search" { class: data }
+
+    loki_tool -> loki_ep -> loki_data
+  }
+}
+
+##############################################################################
+# NETWORK TOOLS
+##############################################################################
+
+network: Network Visibility {
+  style.fill: "#f0f9ff"
+  style.stroke: "#0284c7"
+  style.border-radius: 10
+
+  ntopng: ntopng {
+    style.fill: "#e0f2fe"
+    style.stroke: "#38bdf8"
+    style.border-radius: 8
+
+    ntp_tool: "get_traffic_stats\ninterface list" { class: tool }
+    ntp_ep: "10.0.16.100:3005\n/lua/rest/v2/get/\nntopng/interfaces\nToken auth header" { class: endpoint }
+    ntp_data: "Interfaces list\nbps in/out\nTop hosts\nActive flows" { class: data }
+
+    ntp_tool -> ntp_ep -> ntp_data
+  }
+
+  netbox: NetBox {
+    style.fill: "#e0f2fe"
+    style.stroke: "#38bdf8"
+    style.border-radius: 8
+
+    nb_tool: "query_netbox\nIP/device lookup" { class: tool }
+    nb_ep: "netbox.galaxy.rip\n/api/ipam/ip-addresses\n/api/dcim/devices\nToken auth header" { class: endpoint }
+    nb_data: "IP assignments\nDevice inventory\nSite / rack info\nVLAN config" { class: data }
+
+    nb_tool -> nb_ep -> nb_data
+  }
+}
+
+##############################################################################
+# POWER / HARDWARE
+##############################################################################
+
+power: Power & Hardware {
+  style.fill: "#fff7ed"
+  style.stroke: "#ea580c"
+  style.border-radius: 10
+
+  ups: UPS (apcupsd) {
+    style.fill: "#ffedd5"
+    style.stroke: "#fb923c"
+    style.border-radius: 8
+
+    ups_tool: "get_ups_status\nbattery check" { class: tool }
+    ups_ep: "10.0.0.x:3551\napcupsd NIS port\nTCP socket read" { class: endpoint }
+    ups_data: "Status (ONLINE/ONBATT)\nBattery % · Runtime\nLoad % · Voltage\nModel name" { class: data }
+
+    ups_tool -> ups_ep -> ups_data
+  }
+}
+
+##############################################################################
+# EXECUTION TOOLS
+##############################################################################
+
+execution: Remote Execution {
+  style.fill: "#fdf4ff"
+  style.stroke: "#a855f7"
+  style.border-radius: 10
+
+  ssh: SSH {
+    style.fill: "#f3e8ff"
+    style.stroke: "#c084fc"
+    style.border-radius: 8
+
+    ssh_tool: "run_ssh_command\nget_disk_usage" { class: tool }
+    ssh_hosts: "hawk (10.0.11.100)\nknox (10.0.18.25)\npi (10.0.x.x)\nSSH key auth" { class: endpoint }
+    ssh_data: "Arbitrary shell output\ndf -h results\nProcess lists\nService status" { class: data }
+
+    ssh_tool -> ssh_hosts -> ssh_data
+  }
+}
+
+##############################################################################
+# VOICE / COMMUNICATION
+##############################################################################
+
+comms: Communication {
+  style.fill: "#fefce8"
+  style.stroke: "#ca8a04"
+  style.border-radius: 10
+
+  vapi: VAPI {
+    style.fill: "#fef9c3"
+    style.stroke: "#facc15"
+    style.border-radius: 8
+
+    vapi_ep: "api.vapi.ai\n/call/phone\nBearer token" { class: endpoint }
+    vapi_tool_ep: "POST /webhook/nola-vapi-tool\nn8n receives\ntool call JSON" { class: endpoint }
+    vapi_data: "Outbound phone call\nNOLA voice (ElevenLabs)\nTool results spoken" { class: data }
+
+    vapi_ep -> vapi_data
+    vapi_tool_ep -> vapi_data
+  }
+
+  discord: Discord {
+    style.fill: "#fef9c3"
+    style.stroke: "#facc15"
+    style.border-radius: 8
+
+    disc_ep: "discord.com webhook\n#nola channel\nBot token POST" { class: endpoint }
+    disc_data: "Alert messages\nWeekly digest\nAgent replies" { class: data }
+
+    disc_ep -> disc_data
+  }
+}
+
+##############################################################################
+# AUTHENTICATION SUMMARY
+##############################################################################
+
+auth_note: "Auth Methods\n─────────────────\nNetdata: none (LAN)\nPrometheus: none (LAN)\nLoki: none (LAN)\nntopng: API token header\nNetBox: Token auth header\napcupsd: TCP NIS (LAN)\nSSH: private key\nVAPI: Bearer token\nDiscord: Bot token" {
+  class: note
+}
+
+##############################################################################
+# AGENT → TOOL GROUPS
+##############################################################################
+
+agent -> monitoring.netdata.nd_tool: "CPU/RAM/net queries"
+agent -> monitoring.prometheus.prom_tool: "metric time-series"
+agent -> monitoring.loki.loki_tool: "log search"
+agent -> network.ntopng.ntp_tool: "traffic stats"
+agent -> network.netbox.nb_tool: "IP/device lookup"
+agent -> power.ups.ups_tool: "battery status"
+agent -> execution.ssh.ssh_tool: "shell commands"

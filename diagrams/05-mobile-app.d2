@@ -1,0 +1,270 @@
+##############################################################################
+# NOLA — Mobile App Architecture
+# Screens, data sources, navigation, and state management
+##############################################################################
+
+direction: down
+
+classes: {
+  screen: {
+    shape: rectangle
+    style.fill: "#065f46"
+    style.font-color: white
+    style.border-radius: 8
+    style.bold: true
+  }
+  component: {
+    shape: rectangle
+    style.fill: "#1e3a5f"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  hook: {
+    shape: rectangle
+    style.fill: "#581c87"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  api: {
+    shape: rectangle
+    style.fill: "#374151"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  context: {
+    shape: rectangle
+    style.fill: "#7c2d12"
+    style.font-color: white
+    style.border-radius: 6
+    style.bold: true
+  }
+  storage: {
+    shape: cylinder
+    style.fill: "#0c4a6e"
+    style.font-color: white
+  }
+  nav: {
+    shape: rectangle
+    style.fill: "#92400e"
+    style.font-color: white
+    style.border-radius: 4
+  }
+}
+
+##############################################################################
+# ENTRY POINT
+##############################################################################
+
+app: App.js {
+  class: context
+  label: "App.js\nRoot component"
+}
+
+settings_ctx: "SettingsContext\nProvides: settings, saveSettings\nAsyncStorage: @nola_settings\nDefaults pre-filled" {
+  class: context
+}
+
+nav: "Bottom Tab Navigator\n@react-navigation/bottom-tabs\nbackground: #0d0d1a\nactive: #7b7bff" {
+  class: nav
+}
+
+app -> settings_ctx: "wraps"
+settings_ctx -> nav: "wraps"
+
+##############################################################################
+# NAVIGATION TABS
+##############################################################################
+
+tabs: Five Tabs {
+  style.fill: "#f8fafc"
+  style.stroke: "#64748b"
+  style.border-radius: 10
+
+  t1: "Services\ngrid-outline" { class: nav }
+  t2: "Game Servers\ngame-controller-outline" { class: nav }
+  t3: "Network\nwifi-outline" { class: nav }
+  t4: "Chat\nchatbubble-ellipses-outline" { class: nav }
+  t5: "Settings\nsettings-outline" { class: nav }
+}
+
+nav -> tabs.t1
+nav -> tabs.t2
+nav -> tabs.t3
+nav -> tabs.t4
+nav -> tabs.t5
+
+##############################################################################
+# SCREEN 1 — SERVICES (DashboardScreen)
+##############################################################################
+
+s1: DashboardScreen {
+  style.fill: "#f0fdf4"
+  style.stroke: "#16a34a"
+  style.border-radius: 10
+
+  screen: "DashboardScreen.js\nService status overview" { class: screen }
+
+  hook_svc: "useServices()\npoll every 30s\nfetch + parse\nCheckcle API" { class: hook }
+
+  hook_hist: "useServiceHistory()\nfetchHistory(id, 60)\ntoggleMonitor(id, active)" { class: hook }
+
+  comp_card: "ServiceCard\n• green: up\n• grey: paused\n• red: down\n• response_time ms" { class: component }
+
+  comp_stats: "StatsBar\nUp · Down · Paused\ncounts" { class: component }
+
+  comp_filter: "Show Issues toggle\nhides up services\nshows down+paused" { class: component }
+
+  modal: "ServiceDetailScreen\nModal pageSheet\n• status pill\n• uptime sparkline\n• response time chart\n• monitor config\n• recent check log\n• pause / resume btn\n• open in browser" { class: component }
+
+  api_cc: "CheckCle\ncheckcle.galaxy.rip\nPocketBase API\n/api/collections/\nservices/records\nuptime_data/records" { class: api }
+
+  screen -> hook_svc
+  screen -> hook_hist
+  hook_svc -> comp_card
+  hook_svc -> comp_stats
+  hook_svc -> comp_filter
+  comp_card -> modal: "tap"
+  hook_hist -> modal: "history data"
+  hook_svc -> api_cc
+  hook_hist -> api_cc
+}
+
+##############################################################################
+# SCREEN 2 — GAME SERVERS (AMPScreen)
+##############################################################################
+
+s2: AMPScreen {
+  style.fill: "#f0f9ff"
+  style.stroke: "#0284c7"
+  style.border-radius: 10
+
+  screen: "AMPScreen.js\nAMP / Holodeck game control" { class: screen }
+
+  hook_amp: "useAMP()\nLogin → session\nfetch instances\npoll every 20s" { class: hook }
+
+  comp_inst: "InstanceCard\n• status badge\n• player count\n• start / stop / restart\n• console link" { class: component }
+
+  api_amp: "AMP / Holodeck\nholodeck.galaxy.rip\n/API/Core/Login\n/API/ADSModule/\nGetInstances\n/API/{id}/Start\n/API/{id}/Stop" { class: api }
+
+  screen -> hook_amp
+  hook_amp -> comp_inst
+  hook_amp -> api_amp
+}
+
+##############################################################################
+# SCREEN 3 — NETWORK (NetworkScreen)
+##############################################################################
+
+s3: NetworkScreen {
+  style.fill: "#fff7ed"
+  style.stroke: "#ea580c"
+  style.border-radius: 10
+
+  screen: "NetworkScreen.js\nNetwork visibility" { class: screen }
+
+  hook_nd: "useNetdata()\nparse netdataHosts\nfetch allmetrics\nrefresh 15s" { class: hook }
+
+  hook_tr: "useTraffic()\nfetch interfaces\nfetch per-iface data\nrefresh 10s" { class: hook }
+
+  comp_host: "HostCard\n• online dot\n• CPU MetricBar\n• RAM MetricBar\n• Net in/out bps" { class: component }
+
+  comp_iface: "InterfaceCard\n• interface name\n• bps in ↓ / out ↑\n• hosts + flows" { class: component }
+
+  comp_grafana: "Grafana Links\n4 dashboard tiles\n• Overview\n• Network Traffic\n• System Metrics\n• All Dashboards\nopens in browser" { class: component }
+
+  comp_links: "Quick Links\nntopng · Netdata\nLibreNMS · CheckCle\nopens in browser" { class: component }
+
+  api_nd: "Netdata\nhawk:19999 / fort:19999\n/api/v1/allmetrics\n?format=json" { class: api }
+
+  api_ntp: "ntopng\n10.0.16.100:3005\n/lua/rest/v2/get/\nntopng/interfaces\nToken auth" { class: api }
+
+  screen -> hook_nd
+  screen -> hook_tr
+  hook_nd -> comp_host
+  hook_tr -> comp_iface
+  screen -> comp_grafana
+  screen -> comp_links
+  hook_nd -> api_nd
+  hook_tr -> api_ntp
+}
+
+##############################################################################
+# SCREEN 4 — CHAT (ChatScreen)
+##############################################################################
+
+s4: ChatScreen {
+  style.fill: "#fdf4ff"
+  style.stroke: "#a855f7"
+  style.border-radius: 10
+
+  screen: "ChatScreen.js\nNative chat UI" { class: screen }
+
+  comp_bubble: "Message Bubbles\n• user: right, purple\n• NOLA: left, dark\n• timestamps\n• welcome message" { class: component }
+
+  comp_typing: "Typing Indicator\nActivityIndicator\nwhile awaiting reply" { class: component }
+
+  comp_input: "Input Bar\nTextInput + Send btn\nClear chat (trash icon)" { class: component }
+
+  api_n8n: "n8n Webhook\nn8nWebhookUrl\nPOST {chatInput}\nreads output/\nmessage/response" { class: api }
+
+  screen -> comp_bubble
+  screen -> comp_typing
+  screen -> comp_input
+  comp_input -> api_n8n: "POST chatInput"
+  api_n8n -> comp_bubble: "NOLA reply"
+}
+
+##############################################################################
+# SCREEN 5 — SETTINGS (SettingsScreen)
+##############################################################################
+
+s5: SettingsScreen {
+  style.fill: "#fefce8"
+  style.stroke: "#ca8a04"
+  style.border-radius: 10
+
+  screen: "SettingsScreen.js\nConfiguration + testing" { class: screen }
+
+  sections: Sections {
+    style.fill: "#fffbeb"
+    style.stroke: "#fde68a"
+    style.border-radius: 8
+
+    sec1: "CheckCle\nURL · Email · Password\n[Test] → auth-with-password" { class: component }
+    sec2: "AMP (Game Servers)\nURL · Username · Password\n[Test] → Core/Login" { class: component }
+    sec3: "Network Monitoring\nNetdata Hosts (csv)\nntopng URL + Token\nGrafana URL" { class: component }
+    sec4: "NOLA Chat\nn8n Webhook URL\n[Test] → ping POST" { class: component }
+    sec5: "Debug Mode\nswitch toggle\nshows raw URLs" { class: component }
+  }
+
+  ctx_write: "saveSettings(draft)\nmerge + AsyncStorage\nPersistent across restarts" { class: context }
+
+  storage: "AsyncStorage\n@nola_settings\nJSON blob" { class: storage }
+
+  screen -> sections.sec1
+  screen -> sections.sec2
+  screen -> sections.sec3
+  screen -> sections.sec4
+  screen -> sections.sec5
+  screen -> ctx_write: "Save button"
+  ctx_write -> storage
+}
+
+##############################################################################
+# SHARED COMPONENTS
+##############################################################################
+
+shared: Shared Components {
+  style.fill: "#f8fafc"
+  style.stroke: "#94a3b8"
+  style.border-radius: 10
+
+  minichart: "MiniChart.js\n• UptimeSparkline\n  colored View bars\n• ResponseTimeChart\n  height-prop bars\n• MetricBar\n  horizontal progress" { class: component }
+
+  servicecard: "ServiceCard.js\nStatus + response time\nchevron → modal" { class: component }
+
+  statsbar: "StatsBar.js\nUp / Down / Paused\ncounts row" { class: component }
+}
+
+s1.modal -> shared.minichart: "uses"
+s3.comp_host -> shared.minichart: "uses MetricBar"

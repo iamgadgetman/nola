@@ -1,0 +1,254 @@
+##############################################################################
+# NOLA — System Overview
+# All components and how they relate at a high level
+##############################################################################
+
+direction: right
+
+classes: {
+  cloud: {
+    shape: rectangle
+    style.fill: "#1e3a5f"
+    style.font-color: white
+    style.border-radius: 6
+  }
+  workflow: {
+    shape: rectangle
+    style.fill: "#065f46"
+    style.font-color: white
+    style.border-radius: 6
+  }
+  tool: {
+    shape: rectangle
+    style.fill: "#581c87"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  infra: {
+    shape: rectangle
+    style.fill: "#374151"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  ai: {
+    shape: rectangle
+    style.fill: "#7c2d12"
+    style.font-color: white
+    style.border-radius: 6
+    style.bold: true
+  }
+  mobile: {
+    shape: rectangle
+    style.fill: "#0c4a6e"
+    style.font-color: white
+    style.border-radius: 8
+  }
+  user: {
+    shape: oval
+    style.fill: "#92400e"
+    style.font-color: white
+    style.bold: true
+  }
+}
+
+##############################################################################
+# USERS / INTERFACES
+##############################################################################
+
+users: Users & Interfaces {
+  style.fill: "#fefce8"
+  style.stroke: "#ca8a04"
+  style.border-radius: 10
+
+  human: User {
+    class: user
+    label: "Human\n(you)"
+  }
+  discord: Discord {
+    class: cloud
+    label: "Discord\n#nola channel\ndiscord.com"
+  }
+  phone: Phone {
+    class: user
+    label: "Phone Call\n(critical alerts)\nVAPI outbound"
+  }
+  mobile: NOLA App {
+    class: mobile
+    label: "NOLA Android App\nServices · Servers\nNetwork · Chat"
+  }
+}
+
+##############################################################################
+# VPS — n8n ORCHESTRATION
+##############################################################################
+
+vps: VPS — n8n Orchestration {
+  style.fill: "#f0fdf4"
+  style.stroke: "#16a34a"
+  style.border-radius: 10
+
+  bot: Discord Bot {
+    class: workflow
+    label: "nola-discord\nPython bot\nlistens → forwards"
+  }
+  core: NOLA Core Agent {
+    class: workflow
+    label: "nola — main workflow\nLangChain AI agent\n21 nodes · tools"
+  }
+  monitor: Proactive Monitor {
+    class: workflow
+    label: "nola — proactive monitor\nevery 5 min\nNetdata + UPS checks"
+  }
+  digest: Weekly Digest {
+    class: workflow
+    label: "nola — weekly digest\nMonday 6 AM Pacific\nhealth summary"
+  }
+}
+
+##############################################################################
+# AI BRAIN
+##############################################################################
+
+ai: AI Layer {
+  style.fill: "#fff7ed"
+  style.stroke: "#ea580c"
+  style.border-radius: 10
+
+  claude: Claude Sonnet {
+    class: ai
+    label: "Claude Sonnet 4.6\nAnthropic API\nReasoning + tool use"
+  }
+  ollama_c: Ollama (containy) {
+    class: infra
+    label: "Ollama — containy\n10.0.11.25:11434\nllama3.2:3b\nalert summaries"
+  }
+  ollama_k: Ollama (knox) {
+    class: infra
+    label: "Ollama — knox\n10.0.18.25:11434\nllama3.2:3b\nweekly narratives"
+  }
+}
+
+##############################################################################
+# HOMELAB INFRASTRUCTURE
+##############################################################################
+
+homelab: Homelab Infrastructure {
+  style.fill: "#f8fafc"
+  style.stroke: "#64748b"
+  style.border-radius: 10
+
+  netdata: Netdata {
+    class: tool
+    label: "Netdata\nhawk:19999 · fort:19999\nCPU · RAM · network"
+  }
+  prometheus: Prometheus {
+    class: tool
+    label: "Prometheus\n10.0.11.69:9090\nscraper health"
+  }
+  loki: Loki {
+    class: tool
+    label: "Loki\n10.0.11.71:3100\nlog aggregation"
+  }
+  ntopng: ntopng {
+    class: tool
+    label: "ntopng\n10.0.16.100:3005\ntraffic stats"
+  }
+  netbox: NetBox {
+    class: tool
+    label: "NetBox\nnetbox.galaxy.rip\nIP · device inventory"
+  }
+  checkcle: CheckCle {
+    class: tool
+    label: "CheckCle\ncheckcle.galaxy.rip\nservice uptime"
+  }
+  ups: UPS {
+    class: tool
+    label: "apcupsd\n10.0.0.x:3551\nbattery · load · runtime"
+  }
+  ssh: SSH Hosts {
+    class: infra
+    label: "SSH Hosts\nhawk · knox · pi\ncommand execution"
+  }
+  amp: AMP {
+    class: tool
+    label: "AMP / Holodeck\nholodeck.galaxy.rip\ngame server control"
+  }
+}
+
+##############################################################################
+# EXTERNAL SERVICES
+##############################################################################
+
+external: External Services {
+  style.fill: "#fdf4ff"
+  style.stroke: "#a855f7"
+  style.border-radius: 10
+
+  vapi: VAPI {
+    class: cloud
+    label: "VAPI\napi.vapi.ai\nvoice AI calls"
+  }
+  elevenlabs: ElevenLabs {
+    class: cloud
+    label: "ElevenLabs\nNOLA voice\nTTS synthesis"
+  }
+  cloudflare: Cloudflare {
+    class: cloud
+    label: "Cloudflare\nZero Trust · WAF\nDNS · Access"
+  }
+}
+
+##############################################################################
+# CONNECTIONS
+##############################################################################
+
+# User ↔ Discord ↔ Bot
+users.human -> users.discord: "sends message"
+users.discord -> vps.bot: "webhook POST\n/webhook/nola"
+vps.bot -> users.discord: "posts reply"
+
+# Bot → Core Agent
+vps.bot -> vps.core: "forwards message\n+ session ID"
+
+# Core Agent ↔ Claude
+vps.core -> ai.claude: "LangChain\ntool-calling loop"
+ai.claude -> vps.core: "tool calls\n+ final answer"
+
+# Core Agent → Tools
+vps.core -> homelab.netdata: "get_netdata_metrics\nget_cpu_ram"
+vps.core -> homelab.prometheus: "query_prometheus"
+vps.core -> homelab.loki: "query_loki"
+vps.core -> homelab.ntopng: "get_traffic_stats"
+vps.core -> homelab.netbox: "query_netbox"
+vps.core -> homelab.ups: "get_ups_status"
+vps.core -> homelab.ssh: "run_ssh_command"
+
+# Proactive monitor
+vps.monitor -> homelab.netdata: "every 5 min\nallmetrics"
+vps.monitor -> homelab.ups: "status check"
+vps.monitor -> ai.ollama_c: "summarize alerts\n(15s timeout)"
+vps.monitor -> users.discord: "post alerts"
+vps.monitor -> external.vapi: "critical alert\nphone call"
+
+# Weekly digest
+vps.digest -> homelab.netdata: "health metrics"
+vps.digest -> homelab.prometheus: "scraper health"
+vps.digest -> homelab.ups: "battery status"
+vps.digest -> ai.ollama_k: "narrate digest\n(45s timeout)"
+vps.digest -> users.discord: "post digest"
+
+# VAPI voice
+external.vapi -> external.elevenlabs: "NOLA voice\nTTS"
+external.vapi -> vps.core: "tool calls\n/webhook/nola-vapi-tool"
+users.phone -> external.vapi: "receives call"
+
+# Mobile app
+users.mobile -> homelab.checkcle: "service status\nhistory · config"
+users.mobile -> homelab.amp: "game server\nstart · stop"
+users.mobile -> homelab.netdata: "host metrics"
+users.mobile -> homelab.ntopng: "traffic data"
+users.mobile -> vps.core: "chat\n/webhook/jeeves"
+users.human -> users.mobile
+
+# Cloudflare in front
+external.cloudflare -> vps.core: "*.galaxy.rip\nZero Trust proxy"

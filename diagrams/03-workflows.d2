@@ -1,0 +1,231 @@
+##############################################################################
+# NOLA — n8n Workflows
+# The three automation workflows and their internal node structure
+##############################################################################
+
+direction: down
+
+classes: {
+  trigger: {
+    shape: rectangle
+    style.fill: "#1e3a5f"
+    style.font-color: white
+    style.border-radius: 6
+  }
+  node: {
+    shape: rectangle
+    style.fill: "#065f46"
+    style.font-color: white
+    style.border-radius: 6
+  }
+  ai: {
+    shape: rectangle
+    style.fill: "#7c2d12"
+    style.font-color: white
+    style.border-radius: 6
+    style.bold: true
+  }
+  tool: {
+    shape: rectangle
+    style.fill: "#581c87"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  condition: {
+    shape: diamond
+    style.fill: "#7c3aed"
+    style.font-color: white
+  }
+  output: {
+    shape: oval
+    style.fill: "#92400e"
+    style.font-color: white
+    style.bold: true
+  }
+  note: {
+    shape: rectangle
+    style.fill: "#f1f5f9"
+    style.font-color: "#334155"
+    style.border-radius: 4
+    style.stroke-dash: 3
+  }
+}
+
+##############################################################################
+# WORKFLOW 1 — NOLA Core Agent (nola — main workflow)
+##############################################################################
+
+w1: nola — main workflow {
+  style.fill: "#f0fdf4"
+  style.stroke: "#16a34a"
+  style.border-radius: 12
+
+  t1: "Webhook Trigger\nPOST /webhook/nola\nor /webhook/jeeves\n(Discord + Mobile)" {
+    class: trigger
+  }
+
+  prep: "Prepare Message\nSet node\nextract chatInput\n+ sessionId" {
+    class: node
+  }
+
+  memory: "Window Buffer Memory\nLangChain Memory\n10-message window\nper session" {
+    class: node
+  }
+
+  agent: "LangChain AI Agent\nOpenAI Functions style\ntool-calling loop\n21 nodes total" {
+    class: ai
+  }
+
+  claude: "Claude Sonnet 4.6\nAnthropic API\nmodel: claude-sonnet-4-6\ntemp: 0" {
+    class: ai
+  }
+
+  tools: Tool Nodes {
+    style.fill: "#f3e8ff"
+    style.stroke: "#c084fc"
+    style.border-radius: 8
+
+    t_netdata: "get_netdata_metrics\nHTTP → hawk:19999\nHTTP → fort:19999" { class: tool }
+    t_ups: "get_ups_status\nHTTP → 10.0.0.x:3551\napcupsd NIS" { class: tool }
+    t_prometheus: "query_prometheus\nHTTP → 10.0.11.69:9090\nPromQL queries" { class: tool }
+    t_loki: "query_loki\nHTTP → 10.0.11.71:3100\nLogQL queries" { class: tool }
+    t_traffic: "get_traffic_stats\nHTTP → ntopng:3005\ninterface stats" { class: tool }
+    t_netbox: "query_netbox\nHTTP → netbox.galaxy.rip\nAPI token auth" { class: tool }
+    t_ssh: "run_ssh_command\nSSH exec\nhawk / knox / pi" { class: tool }
+    t_disk: "get_disk_usage\nSSH df -h\npath parameter" { class: tool }
+  }
+
+  respond: "HTTP Response\nreturn output\nto caller" {
+    class: output
+  }
+
+  t1 -> prep
+  prep -> memory: "session context"
+  memory -> agent
+  agent -> claude: "messages +\ntool definitions"
+  claude -> agent: "tool calls\nor final answer"
+  agent -> tools.t_netdata
+  agent -> tools.t_ups
+  agent -> tools.t_prometheus
+  agent -> tools.t_loki
+  agent -> tools.t_traffic
+  agent -> tools.t_netbox
+  agent -> tools.t_ssh
+  agent -> tools.t_disk
+  tools.t_netdata -> agent: "result"
+  tools.t_ups -> agent: "result"
+  tools.t_prometheus -> agent: "result"
+  tools.t_loki -> agent: "result"
+  tools.t_traffic -> agent: "result"
+  tools.t_netbox -> agent: "result"
+  tools.t_ssh -> agent: "result"
+  tools.t_disk -> agent: "result"
+  agent -> respond: "final answer"
+}
+
+##############################################################################
+# WORKFLOW 2 — Proactive Monitor
+##############################################################################
+
+w2: nola — proactive monitor {
+  style.fill: "#fff7ed"
+  style.stroke: "#ea580c"
+  style.border-radius: 12
+
+  t2: "Schedule Trigger\nevery 5 minutes\n24 × 7" {
+    class: trigger
+  }
+
+  fetch_nd: "Fetch Netdata\nallmetrics from\nhawk + fort\n(parallel HTTP)" {
+    class: node
+  }
+
+  fetch_ups: "Fetch UPS Status\napcupsd NIS\nbattery + load" {
+    class: node
+  }
+
+  parse: "Parse + Threshold Check\nSet node\nCPU > 85%?\nRAM > 90%?\nUPS load > 80%?\nbattery < 20%?" {
+    class: node
+  }
+
+  alert_check: "Any alerts?" {
+    class: condition
+  }
+
+  summarize: "Ollama summarize\ncontainy:11434\nllama3.2:3b\n15s timeout\n'summarize alerts'" {
+    class: ai
+  }
+
+  critical_check: "Critical?\n(CPU>95, battery<10\nor UPS on battery)" {
+    class: condition
+  }
+
+  discord_alert: "Discord HTTP POST\nbot webhook\n#nola channel\nformatted alert" {
+    class: output
+  }
+
+  vapi_call: "VAPI outbound call\nPOST api.vapi.ai\n/call/phone\nNOLA voice" {
+    class: output
+  }
+
+  t2 -> fetch_nd
+  t2 -> fetch_ups
+  fetch_nd -> parse
+  fetch_ups -> parse
+  parse -> alert_check
+  alert_check -> summarize: "yes — alerts found"
+  alert_check -> t2: "no — sleep until next"
+  summarize -> critical_check
+  critical_check -> discord_alert: "always"
+  critical_check -> vapi_call: "if critical"
+}
+
+##############################################################################
+# WORKFLOW 3 — Weekly Digest
+##############################################################################
+
+w3: nola — weekly digest {
+  style.fill: "#fdf4ff"
+  style.stroke: "#a855f7"
+  style.border-radius: 12
+
+  t3: "Schedule Trigger\nMonday 6 AM Pacific\n(cron: 0 14 * * 1)" {
+    class: trigger
+  }
+
+  gather: Gather Metrics {
+    style.fill: "#f3e8ff"
+    style.stroke: "#c084fc"
+    style.border-radius: 8
+
+    g_nd: "Netdata allmetrics\nhawk + fort\npast-week summary" { class: node }
+    g_prom: "Prometheus\nscraper health\njob up/down 7 days" { class: node }
+    g_ups: "UPS battery history\napcupsd NIS\nruntime trend" { class: node }
+  }
+
+  compile: "Compile Report Data\nSet node\nmerge all sources\nbuild context string" {
+    class: node
+  }
+
+  narrate: "Ollama narrate\nknox:11434\nllama3.2:3b\n45s timeout\n'write weekly digest'" {
+    class: ai
+  }
+
+  format_md: "Format Markdown\nSet node\nadd headers + emoji\ntruncate to 2000 chars" {
+    class: node
+  }
+
+  post: "Discord HTTP POST\nbot webhook\n#nola channel\nweekly digest embed" {
+    class: output
+  }
+
+  t3 -> gather.g_nd
+  t3 -> gather.g_prom
+  t3 -> gather.g_ups
+  gather.g_nd -> compile
+  gather.g_prom -> compile
+  gather.g_ups -> compile
+  compile -> narrate
+  narrate -> format_md
+  format_md -> post
+}

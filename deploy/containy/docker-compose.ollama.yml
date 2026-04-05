@@ -1,0 +1,42 @@
+# Ollama — containy (10.0.11.11) — 11_Net / Hawk DMZ
+# Dedicated macvlan IP: 10.0.11.25
+#
+# Before deploying:
+#   1. Verify parent interface: ip link  (usually eno1 or enp3s0)
+#      Update `parent:` below if different.
+#   2. Deploy:  docker compose -f docker-compose.ollama.yml up -d
+#   3. Pull model: docker exec ollama ollama pull llama3.2:3b
+#
+# Ollama API will be reachable at http://10.0.11.25:11434 from the VPS via wg0.
+
+version: "3.8"
+
+networks:
+  macvlan_11:
+    driver: macvlan
+    driver_opts:
+      parent: eno1        # <-- verify with: ip link
+    ipam:
+      config:
+        - subnet: 10.0.11.0/24
+          gateway: 10.0.11.1
+
+volumes:
+  ollama_data:
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    networks:
+      macvlan_11:
+        ipv4_address: 10.0.11.25
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=5m
+    # CPU-only — Intel iGPU not supported by Ollama's GPU offload
+    # llama3.2:3b uses ~2GB RAM and runs well on CPU

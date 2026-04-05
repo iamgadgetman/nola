@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "NOLA",
+    "slug": "homelab-dashboard",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0d1a"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#0d0d1a"
+      },
+      "package": "rip.galaxy.nola",
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "17b9a0aa-1192-41df-90ba-b07519ac3c06"
+      }
+    },
+    "owner": "iamgadgetman"
+  }
+}

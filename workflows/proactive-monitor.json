@@ -45,6 +45,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// Summarize alerts with Ollama (containy — 10.0.11.25)\n// Falls back gracefully if Ollama is unavailable.\nconst alerts = $input.first().json.alerts;\nconst isCritical = $input.first().json.isCritical;\nconst alertCount = $input.first().json.alertCount;\n\nconst ollamaUrl = process.env.OLLAMA_URL_CONTAINY || 'http://10.0.11.25:11434';\nconst model = process.env.OLLAMA_MODEL || 'llama3.2:3b';\n\nconst prompt = `You are NOLA, a homelab monitoring assistant. Summarize these infrastructure alerts in 1-2 sentences. Be direct and technical — provide insight or context, do not just repeat the raw data verbatim.\\n\\nAlerts:\\n${alerts.join('\\n')}`;\n\nlet aiSummary = null;\ntry {\n  const resp = await $helpers.httpRequest({\n    method: 'POST',\n    url: `${ollamaUrl}/api/generate`,\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ model, prompt, stream: false }),\n    timeout: 15000\n  });\n  const data = typeof resp === 'string' ? JSON.parse(resp) : resp;\n  aiSummary = data?.response?.trim() || null;\n} catch (err) {\n  // Ollama unavailable — continue without AI summary\n}\n\nreturn [{ json: { alerts, isCritical, alertCount, aiSummary } }];"
+      },
+      "id": "ollama-summarize",
+      "name": "Summarize with Ollama",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 200]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
         "sendHeaders": true,
@@ -55,21 +65,21 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"content\": \"🔔 **NOLA Proactive Monitor**\\n{{ $json.alerts.join('\\n') }}\"\n}",
+        "jsonBody": "={\n  \"content\": \"🔔 **NOLA Proactive Monitor**\\n{{ $json.alerts.join('\\n') }}{{ $json.aiSummary ? '\\n\\n💬 ' + $json.aiSummary : '' }}\"\n}",
         "options": {}
       },
       "id": "post-discord",
       "name": "Post Alerts to Discord",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [880, 200]
+      "position": [1100, 200]
     },
     {
       "parameters": {
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.isCritical }}",
+              "value1": "={{ $('Summarize with Ollama').first().json.isCritical }}",
               "value2": true
             }
           ]
@@ -79,7 +89,7 @@
       "name": "Is Critical?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [880, 400]
+      "position": [1100, 400]
     },
     {
       "parameters": {
@@ -101,7 +111,7 @@
       "name": "VAPI Phone Call",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1100, 400]
+      "position": [1320, 400]
     }
   ],
   "connections": {
@@ -117,14 +127,20 @@
     },
     "Any Alerts?": {
       "main": [
-        [{ "node": "Post Alerts to Discord", "type": "main", "index": 0 }],
+        [{ "node": "Summarize with Ollama", "type": "main", "index": 0 }],
         []
       ]
     },
-    "Post Alerts to Discord": {
+    "Summarize with Ollama": {
       "main": [
-        [{ "node": "Is Critical?", "type": "main", "index": 0 }]
+        [
+          { "node": "Post Alerts to Discord", "type": "main", "index": 0 },
+          { "node": "Is Critical?", "type": "main", "index": 0 }
+        ]
       ]
+    },
+    "Post Alerts to Discord": {
+      "main": [[]]
     },
     "Is Critical?": {
       "main": [
