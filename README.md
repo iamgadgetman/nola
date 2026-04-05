@@ -89,7 +89,7 @@ All configuration is done via `.env`. See [`.env.example`](.env.example) for the
 
 ## Name
 
-NOLA is named for **Nola**, after the 1918 piano piece *Nola* by Felix Arndt. The silhouette in the icon is from that original sheet music cover.
+NOLA is named for **Nola**, after my helpful and loving Mother, who got the name from the 1918 piano piece *Nola* by Felix Arndt. The silhouette in the icon is from that original sheet music cover.
 
 ---
 
