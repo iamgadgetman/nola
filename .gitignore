@@ -11,6 +11,8 @@ __pycache__/
 *.pyc
 .DS_Store
 /tmp/
+mobile/node_modules/
+mobile/.expo/
 
 # Internal planning docs (not for public repo)
 ORIGINAL_JEEVES_DUMP.md
