@@ -14,6 +14,12 @@ __pycache__/
 mobile/node_modules/
 mobile/.expo/
 
+# Claude Code session data
+.claude/
+
+# Scratch / temp files
+dns-fixup.txt
+
 # Internal planning docs (not for public repo)
 ORIGINAL_JEEVES_DUMP.md
 README_FIRST.md

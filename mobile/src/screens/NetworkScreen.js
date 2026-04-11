@@ -9,13 +9,7 @@ import { useNetdata } from '../hooks/useNetdata';
 import { useTraffic } from '../hooks/useTraffic';
 import { useSettings } from '../context/SettingsContext';
 import { MetricBar } from '../components/MiniChart';
-
-const GRAFANA_DASHBOARDS = [
-  { name: 'Infrastructure Overview', icon: 'server-outline', path: '/d/homelab' },
-  { name: 'Network Traffic',         icon: 'analytics-outline', path: '/d/network' },
-  { name: 'System Metrics',          icon: 'speedometer-outline', path: '/d/system' },
-  { name: 'All Dashboards',          icon: 'grid-outline', path: '/dashboards' },
-];
+import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
   const { settings } = useSettings();

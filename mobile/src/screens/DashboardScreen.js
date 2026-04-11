@@ -12,7 +12,7 @@ import ServiceDetailScreen from './ServiceDetailScreen';
 import { GROUPS } from '../constants/config';
 
 export default function DashboardScreen() {
-  const { services, loading, error, lastUpdated, refresh, stats } = useServices();
+  const { services, loading, error, isStale, lastUpdated, refresh, stats } = useServices();
   const [search, setSearch] = useState('');
   const [activeGroup, setActiveGroup] = useState('All');
   const [showDownOnly, setShowDownOnly] = useState(false);
@@ -40,6 +40,12 @@ export default function DashboardScreen() {
         <View style={styles.errorBox}>
           <Ionicons name="warning-outline" size={16} color="#ff4757" />
           <Text style={styles.errorText}> {error}</Text>
+        </View>
+      ) : null}
+      {isStale && !error ? (
+        <View style={styles.staleBox}>
+          <Ionicons name="cloud-offline-outline" size={14} color="#f0a500" />
+          <Text style={styles.staleText}> Offline — showing cached data</Text>
         </View>
       ) : null}
 
@@ -133,6 +139,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3, borderLeftColor: '#ff4757',
   },
   errorText: { color: '#ff4757', fontSize: 13 },
+  staleBox: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1a0a',
+    marginHorizontal: 16, marginBottom: 12, padding: 10, borderRadius: 8,
+    borderLeftWidth: 3, borderLeftColor: '#f0a500',
+  },
+  staleText: { color: '#f0a500', fontSize: 13 },
   searchRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10, gap: 8 },
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center',

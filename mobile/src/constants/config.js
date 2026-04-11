@@ -23,6 +23,15 @@ export const SERVICE_URLS = {
   'Vault':                'https://vault.galaxy.rip',
 };
 
+// Grafana dashboard shortcuts — paths relative to grafanaUrl in Settings
+// Update these to match your actual dashboard UIDs/slugs
+export const GRAFANA_DASHBOARDS = [
+  { name: 'Infrastructure Overview', icon: 'server-outline',      path: '/d/homelab' },
+  { name: 'Network Traffic',         icon: 'analytics-outline',   path: '/d/network' },
+  { name: 'System Metrics',          icon: 'speedometer-outline', path: '/d/system' },
+  { name: 'All Dashboards',          icon: 'grid-outline',        path: '/dashboards' },
+];
+
 export const GROUPS = [
   'Infrastructure',
   'Monitoring',

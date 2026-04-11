@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>N.O.L.A. Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/css/nola.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════ DASHBOARD MODE ═══════════════════════ -->
+<div id="dashboard">
+
+  <header class="site-header">
+    <div class="header-brand">
+      <span class="brand-dot"></span>
+      <span class="brand-title">N.O.L.A.</span>
+      <span class="brand-sub">Non-Organic Lab Assistant</span>
+    </div>
+    <div class="header-status">
+      <div class="status-summary" id="host-summary">— / — hosts</div>
+      <div class="status-alerts" id="alert-summary"></div>
+    </div>
+    <div class="header-controls">
+      <div class="clock" id="clock"></div>
+      <button class="btn-kiosk" id="kiosk-toggle" onclick="enterKioskMode()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Kiosk
+      </button>
+    </div>
+  </header>
+
+  <!-- Host status strip -->
+  <section class="host-strip" id="host-strip">
+    <div class="loading-placeholder">Loading hosts…</div>
+  </section>
+
+  <!-- Metrics grid -->
+  <main class="metrics-grid">
+
+    <!-- Internet Speed -->
+    <div class="nola-card card-speed" id="card-speed">
+      <div class="nola-card__header">
+        <span class="card-icon">⚡</span>
+        <span class="nola-card__title">Internet Speed</span>
+        <span class="nola-card__badge">fort + hawk</span>
+      </div>
+      <div class="nola-card__body speed-body">
+        <div id="speed-cards-container" class="speed-cards-container">
+          <div class="speed-no-data">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CrowdSec -->
+    <div class="nola-card card-crowdsec" id="card-crowdsec">
+      <div class="nola-card__header">
+        <span class="card-icon">🛡️</span>
+        <span class="nola-card__title">CrowdSec Bans</span>
+      </div>
+      <div class="nola-card__body crowdsec-body">
+        <span class="crowdsec-count" id="crowdsec-count">—</span>
+        <span class="crowdsec-label">active bans</span>
+      </div>
+    </div>
+
+    <!-- Active Alerts -->
+    <div class="nola-card card-alerts" id="card-alerts">
+      <div class="nola-card__header">
+        <span class="card-icon">🔔</span>
+        <span class="nola-card__title">Active Alerts</span>
+        <span class="nola-card__badge" id="alert-count-badge">0</span>
+      </div>
+      <div class="nola-card__body alerts-body" id="alerts-list">
+        <div class="all-clear">
+          <span class="all-clear-icon">✓</span>
+          <span>All Clear</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Charts row -->
+  <section class="chart-section charts-row">
+
+    <div class="nola-card card-chart">
+      <div class="nola-card__header">
+        <span class="card-icon">📈</span>
+        <span class="nola-card__title">CPU Usage — Last 30 Minutes</span>
+        <span class="nola-card__badge">live</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="cpu-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="nola-card card-chart" id="card-wan">
+      <div class="nola-card__header">
+        <span class="card-icon">🌐</span>
+        <span class="nola-card__title">WAN Traffic — Last Hour</span>
+        <span class="nola-card__badge">fort + hawk</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="wan-chart"></canvas>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Ask NOLA -->
+  <section class="ask-section">
+    <div class="nola-card card-ask">
+      <div class="nola-card__header">
+        <span class="card-icon">🤖</span>
+        <span class="nola-card__title">Ask NOLA</span>
+        <span class="nola-card__badge ask-provider" id="ask-provider" style="display:none"></span>
+      </div>
+      <div class="nola-card__body ask-body">
+        <div class="ask-input-row">
+          <input type="text" id="ask-input" class="ask-input"
+            placeholder="What's wrong with containy? Why is RAM spiking?"
+            autocomplete="off" />
+          <button class="ask-btn" id="ask-btn" onclick="submitAsk()">Ask</button>
+        </div>
+        <div class="ask-response" id="ask-response"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <span>N.O.L.A. v0.1.0</span>
+    <span id="last-updated">—</span>
+  </footer>
+
+</div><!-- /#dashboard -->
+
+
+<!-- ═══════════════════════ KIOSK MODE ═══════════════════════════ -->
+<div id="kiosk" class="kiosk-container" style="display:none">
+
+  <!-- Slide nav dots -->
+  <div class="kiosk-dots" id="kiosk-dots">
+    <button class="kiosk-dot active" onclick="jumpKioskSlide(0)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(1)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(2)"></button>
+  </div>
+
+  <!-- Exit hint -->
+  <button class="kiosk-exit" onclick="exitKioskMode()" title="Exit kiosk (Esc)">✕</button>
+
+  <!-- ── Slide 0: Host Status ── -->
+  <div class="kiosk-slide" id="kslide-0">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">System Status</div>
+      <div class="kslide-clock" id="kiosk-clock"></div>
+    </div>
+    <div class="kiosk-host-grid" id="kiosk-hosts"></div>
+    <div class="kslide-summary" id="kiosk-host-summary"></div>
+  </div>
+
+  <!-- ── Slide 1: Performance ── -->
+  <div class="kiosk-slide" id="kslide-1">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">Performance</div>
+    </div>
+    <div class="kslide-perf-grid" id="k-speed-blocks">
+      <!-- populated by renderKioskPerf() -->
+    </div>
+    <div class="kslide-perf-grid kslide-perf-grid--bans">
+      <div class="kperf-block">
+        <div class="kperf-label">🛡 CrowdSec Bans</div>
+        <div class="kperf-value red" id="k-bans">—</div>
+        <div class="kperf-unit">active</div>
+      </div>
+    </div>
+    <div class="kslide-top-hosts" id="k-top-hosts"></div>
+  </div>
+
+  <!-- ── Slide 2: Alerts ── -->
+  <div class="kiosk-slide" id="kslide-2">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">Security & Alerts</div>
+    </div>
+    <div class="kiosk-alerts-body" id="kiosk-alerts-body">
+      <div class="kiosk-all-clear" id="kiosk-all-clear">
+        <div class="kac-icon">✓</div>
+        <div class="kac-text">ALL CLEAR</div>
+        <div class="kac-sub">No active alerts</div>
+      </div>
+      <div class="kiosk-alert-list" id="kiosk-alert-list" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="kiosk-progress-bar" id="kiosk-progress"></div>
+
+</div><!-- /#kiosk -->
+
+<script src="/js/app.js"></script>
+</body>
+</html>

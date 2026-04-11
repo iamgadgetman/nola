@@ -3,6 +3,7 @@ version: "3.8"
 volumes:
   n8n_storage:
   postgres_storage:
+  postgres_backups:
   ollama_storage:
   qdrant_storage:
 
@@ -12,7 +13,7 @@ networks:
 
 x-shared-n8n: &shared-n8n
   restart: unless-stopped
-  image: docker.n8n.io/n8nio/n8n
+  image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-1.62.1}
   environment:
     - DB_TYPE=postgresdb
     - DB_POSTGRESDB_HOST=postgres
@@ -60,8 +61,29 @@ services:
       postgres:
         condition: service_healthy
 
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        while true; do
+          FILE=/backups/nola-$$(date +%Y%m%d-%H%M).sql.gz;
+          pg_dump -h postgres -U $${POSTGRES_USER:-nola} $${POSTGRES_DB:-nola} | gzip > $$FILE &&
+          echo \"[backup] saved $$FILE\";
+          find /backups -name '*.sql.gz' -mtime +7 -delete;
+          sleep 86400;
+        done
+      "
+
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:${OLLAMA_VERSION:-0.3.12}
     restart: unless-stopped
     volumes:
       - ollama_storage:/root/.ollama
@@ -69,7 +91,7 @@ services:
       - local-ai
 
   qdrant:
-    image: qdrant/qdrant
+    image: qdrant/qdrant:${QDRANT_VERSION:-v1.11.0}
     restart: unless-stopped
     volumes:
       - qdrant_storage:/qdrant/storage

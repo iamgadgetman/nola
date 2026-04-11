@@ -1,16 +1,20 @@
 import discord
 import aiohttp
 import os
-import asyncio
+import time
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
-N8N_WEBHOOK = os.getenv("N8N_WEBHOOK")
-TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID      = int(os.getenv("DISCORD_CHANNEL_ID"))
+N8N_WEBHOOK     = os.getenv("N8N_WEBHOOK")
+TOKEN           = os.getenv("DISCORD_TOKEN")
+COOLDOWN_SECONDS = int(os.getenv("BOT_COOLDOWN_SECONDS", "5"))
+
+# Per-author cooldown: {author_id: last_sent_monotonic_time}
+_cooldowns: dict[int, float] = {}
 
 @client.event
 async def on_ready():
@@ -20,6 +24,12 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot or message.channel.id != CHANNEL_ID:
         return
+
+    now = time.monotonic()
+    if now - _cooldowns.get(message.author.id, 0) < COOLDOWN_SECONDS:
+        await message.add_reaction("⏳")
+        return
+    _cooldowns[message.author.id] = now
 
     async with message.channel.typing():
         try:

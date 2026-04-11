@@ -1,22 +1,52 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+
+// Keys stored in SecureStore (encrypted on-device) rather than plaintext AsyncStorage
+const SENSITIVE_KEYS = ['checkclePassword', 'ampPassword', 'ntopngToken'];
 
 const STORAGE_KEY = '@nola_settings';
 
 export const DEFAULTS = {
-  checkcleUrl: 'https://checkcle.galaxy.rip',
-  checkcleEmail: 'gadgetmansemail@gmail.com',
-  checkclePassword: 'mcu8mC@4',
-  ampUrl: 'https://holodeck.galaxy.rip',
-  ampUsername: 'gadget',
-  ampPassword: 'mcu8mC@4',
-  n8nWebhookUrl: 'https://n8n.gadgetman.cloud/webhook/jeeves',
-  netdataHosts: 'hawk:http://10.0.11.100:19999,fort:http://10.0.18.100:19999',
-  ntopngUrl: 'http://10.0.16.100:3005',
-  ntopngToken: '06cb62d85766b74e0b5404060e52cfb4',
-  grafanaUrl: 'https://grafana.galaxy.rip',
-  debugMode: false,
+  checkcleUrl:         'https://checkcle.galaxy.rip',
+  checkcleEmail:       '',
+  checkclePassword:    '',
+  ampUrl:              'https://holodeck.galaxy.rip',
+  ampUsername:         '',
+  ampPassword:         '',
+  n8nWebhookUrl:       '',
+  netdataHosts:        '',
+  ntopngUrl:           '',
+  ntopngToken:         '',
+  grafanaUrl:          'https://grafana.galaxy.rip',
+  debugMode:           false,
+  pollIntervalSeconds: 30,
 };
+
+async function loadAllSettings() {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  const stored = raw ? JSON.parse(raw) : {};
+
+  const sensitive = {};
+  await Promise.all(SENSITIVE_KEYS.map(async (key) => {
+    const val = await SecureStore.getItemAsync(key);
+    if (val !== null) sensitive[key] = val;
+  }));
+
+  return { ...DEFAULTS, ...stored, ...sensitive };
+}
+
+async function persistAllSettings(next) {
+  // Non-sensitive → AsyncStorage
+  const nonSensitive = { ...next };
+  SENSITIVE_KEYS.forEach(k => delete nonSensitive[k]);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nonSensitive));
+
+  // Sensitive → SecureStore
+  await Promise.all(
+    SENSITIVE_KEYS.map(k => SecureStore.setItemAsync(k, next[k] || ''))
+  );
+}
 
 const SettingsContext = createContext({ settings: DEFAULTS, saveSettings: async () => {} });
 
@@ -25,20 +55,16 @@ export function SettingsProvider({ children }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
-      if (raw) {
-        try {
-          setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
-        } catch (_) {}
-      }
-      setLoaded(true);
-    });
+    loadAllSettings()
+      .then(all => setSettings(all))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   const saveSettings = useCallback(async (updates) => {
     const next = { ...settings, ...updates };
     setSettings(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await persistAllSettings(next);
   }, [settings]);
 
   if (!loaded) return null;
