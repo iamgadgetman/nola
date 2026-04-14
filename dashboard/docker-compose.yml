@@ -1,0 +1,20 @@
+services:
+  nola-dashboard:
+    build: .
+    container_name: nola-dashboard
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      11_Net:
+        ipv4_address: 10.0.11.55
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nola-dashboard.rule=Host(`nola.galaxy.rip`)"
+      - "traefik.http.routers.nola-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.nola-dashboard.tls.certresolver=myresolver"
+      - "traefik.http.services.nola-dashboard.loadbalancer.server.port=3000"
+
+networks:
+  11_Net:
+    external: true
+    name: 11_Net
