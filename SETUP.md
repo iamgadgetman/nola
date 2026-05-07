@@ -156,8 +156,87 @@ To enable phone alerts on critical events:
 1. Create a VAPI account at vapi.ai
 2. Create a phone number and an assistant
 3. Point the assistant's **Server URL** to: `{N8N_WEBHOOK_BASE_URL}/webhook/nola-vapi-tool`
-4. Fill in `VAPI_API_KEY`, `VAPI_PHONE_NUMBER_ID`, `VAPI_ASSISTANT_ID`, and `ALERT_PHONE_NUMBER` in `.env`
-5. Activate the `proactive-monitor` workflow
+4. In the VAPI dashboard under **Server URL → Server Secret**, set a random secret string
+5. Add that same string as `VAPI_SERVER_SECRET` in `.env`
+6. Fill in `VAPI_API_KEY`, `VAPI_PHONE_NUMBER_ID`, `VAPI_ASSISTANT_ID`, and `ALERT_PHONE_NUMBER` in `.env`
+7. Activate the `proactive-monitor` workflow
+
+---
+
+## Automated workflow import
+
+Instead of the manual Steps 4a–4d, you can use the import script after starting the stack:
+
+```bash
+# 1. Create an n8n API key: Settings → API → Create an API key
+export N8N_API_KEY=<your-key>
+
+# 2. Run the importer
+./scripts/import-workflows.sh
+```
+
+This will import `tool-run-command.json`, capture its ID, update `.env`, restart n8n, then import and activate all remaining workflows.
+
+Requires `curl` and `jq` on the host.
+
+---
+
+## LibreNMS alert relay (optional)
+
+The `librenms-alert.json` workflow receives webhooks from LibreNMS and posts them to Discord.
+
+**n8n side:** Import and activate `workflows/librenms-alert.json`. The webhook URL will be:
+```
+{N8N_WEBHOOK_BASE_URL}/webhook/nola-librenms-alert
+```
+
+**LibreNMS side:**
+1. Go to **Alerts → Alert Transports → Add Transport**
+2. Choose **API** as the transport type
+3. Set the URL to your n8n webhook URL above
+4. Set method to **POST**, content type **application/json**
+5. Map these fields in the template:
+   ```json
+   {
+     "title": "{{ $alert->title }}",
+     "hostname": "{{ $alert->hostname }}",
+     "severity": "{{ $alert->severity }}",
+     "message": "{{ $alert->msg }}",
+     "state": {{ $alert->state }}
+   }
+   ```
+6. Assign the transport to your alert rules
+
+`state: 1` = firing, `state: 0` = resolved (renders as ✅ in Discord).
+
+---
+
+## Secret rotation
+
+**Postgres password** (`POSTGRES_PASSWORD`)
+```bash
+# 1. Update .env with new password
+# 2. Apply to the running database
+docker compose exec postgres psql -U nola -c "ALTER USER nola PASSWORD 'newpassword';"
+# 3. Restart n8n to pick up the new connection string
+docker compose restart n8n
+```
+
+**n8n encryption key** (`N8N_ENCRYPTION_KEY`)
+
+> Warning: changing this key invalidates all stored n8n credentials. Export them first.
+
+1. Export all credentials from n8n (Settings → Export)
+2. Update `N8N_ENCRYPTION_KEY` in `.env`
+3. Restart n8n: `docker compose restart n8n`
+4. Re-enter all credentials in n8n
+
+**API keys** (Anthropic, Discord, VAPI, etc.)
+Update the value in `.env`, then restart the affected container:
+```bash
+docker compose restart n8n       # for ANTHROPIC_API_KEY, N8N_ENCRYPTION_KEY
+docker compose restart nola-bot  # for DISCORD_TOKEN
+```
 
 ---
 

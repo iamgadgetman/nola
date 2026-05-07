@@ -14,6 +14,7 @@
     "@react-navigation/bottom-tabs": "^7.15.6",
     "@react-navigation/native": "^7.1.34",
     "expo": "~55.0.8",
+    "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~55.0.4",
     "react": "19.2.0",
     "react-native": "0.83.2",

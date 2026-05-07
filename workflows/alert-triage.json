@@ -1,0 +1,165 @@
+{
+  "name": "NOLA Alert Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grafana-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Grafana Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "grafana-alert-triage"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {}
+      },
+      "id": "respond-node",
+      "name": "Respond to Grafana",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [460, 160]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.triagePrompt }}",
+        "options": {
+          "systemMessage": "You are NOLA (Network Operations & Lab Assistant), an AI monitoring assistant for a self-hosted homelab called Galaxy Lab.\n\nYour job is to triage Grafana/Loki alerts and provide concise, actionable analysis. You have access to query_loki to pull relevant log context.\n\nWhen triaging an alert:\n1. Use query_loki to pull the relevant logs around the alert (use the time window and host from the alert context)\n2. Analyze what's actually happening — is this noise, a real issue, or something in between?\n3. Identify any patterns (same IP, same process, recurring issue)\n4. Give a clear verdict: Noise / Watch / Action Required\n5. Suggest what (if anything) to do\n\nKeep your response under 400 words. Be direct and technical — Chance is a 20-year network/security engineer who wants signal, not fluff.\n\nFormat your Discord message like this:\n🔔 **[AlertName]** — [Verdict: Noise/Watch/Action Required]\n**Host:** [hostname]\n**What happened:** [1-2 sentences]\n**Evidence:** [key log lines or patterns]\n**Recommendation:** [what to do, or \"No action needed\"]\n\nDo NOT include the full raw alert JSON in your message. Be concise."
+        }
+      },
+      "id": "nola-agent-node",
+      "name": "NOLA Triage Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [460, 380]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.NOLA_MODEL }}",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "claude-node",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [340, 560],
+      "credentials": {
+        "anthropicApi": {
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "query_loki",
+        "description": "Query Loki for logs using LogQL. Use this to get log context around an alert. Label examples: {job=\"syslog\", host=\"stop\"}, {job=\"syslog\", host=\"halt.universe\"}. For firewall blocks: {job=\"syslog\"} |= \"filterlog\" |= \",block,\". For SSH: {job=\"syslog\"} |= \"sshd\". For WireGuard: {job=\"syslog\"} |= \"wireguard\".",
+        "parametersUi": {
+          "parameter": [
+            {"name": "query", "description": "LogQL query string"},
+            {"name": "since", "description": "Lookback window: 15m, 1h, 6h (default 30m)"},
+            {"name": "limit", "description": "Max log lines to return (default 50)"}
+          ]
+        },
+        "jsCode": "const LOKI_URL = process.env.LOKI_URL || 'http://loki.galaxy:3100';\nconst query = $parameter.query;\nconst since = $parameter.since || '30m';\nconst limit = $parameter.limit || 50;\n\nconst params = new URLSearchParams({\n  query,\n  since,\n  limit: String(limit),\n  direction: 'backward'\n});\n\nconst response = await $helpers.httpRequest({\n  method: 'GET',\n  url: `${LOKI_URL}/loki/api/v1/query_range?${params}`,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nconst streams = response?.data?.result || [];\nif (streams.length === 0) return 'No logs found for query: ' + query;\n\nconst lines = streams.flatMap(s => s.values.map(v => v[1])).slice(0, limit);\nreturn `Found ${lines.length} log lines:\\n` + lines.join('\\n');"
+      },
+      "id": "loki-tool-node",
+      "name": "query_loki",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [580, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\n// Handle both Grafana unified alerting and legacy formats\nconst alerts = body.alerts || [];\nconst status = body.status || 'firing';\n\nif (alerts.length === 0) {\n  return [{ json: { skip: true, reason: 'No alerts in payload' } }];\n}\n\nconst results = [];\nfor (const alert of alerts) {\n  const alertName = alert.labels?.alertname || 'Unknown Alert';\n  const severity = alert.labels?.severity || 'unknown';\n  const host = (alert.labels?.instance || alert.labels?.host || 'unknown').replace(/:\\d+$/, '');\n  const summary = alert.annotations?.summary || alert.annotations?.description || '';\n  const state = alert.status || status;\n  const startsAt = alert.startsAt || new Date().toISOString();\n\n  // Build a clear prompt for NOLA\n  const triagePrompt = `A Grafana alert has fired. Please triage it.\n\n**Alert:** ${alertName}\n**Status:** ${state}\n**Severity:** ${severity}\n**Host:** ${host}\n**Summary:** ${summary}\n**Fired at:** ${startsAt}\n\nPlease query Loki for relevant context (use a 30m window around the alert time on the relevant host), analyze what's happening, and post your triage verdict to Discord using post_to_discord.`;\n\n  results.push({\n    json: {\n      alertName,\n      severity,\n      host,\n      summary,\n      state,\n      startsAt,\n      triagePrompt,\n      skip: false\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "parse-node",
+      "name": "Parse Alert Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {"type": "boolean", "operation": "equals"}
+            }
+          ]
+        }
+      },
+      "id": "skip-check-node",
+      "name": "Skip if empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "name": "post_to_discord",
+        "description": "Post NOLA's triage analysis to the Discord alert channel.",
+        "jsCode": "const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;\nif (!WEBHOOK_URL) return 'Discord webhook URL not configured';\n\nconst message = $parameter.message;\nconst response = await $helpers.httpRequest({\n  method: 'POST',\n  url: WEBHOOK_URL,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ content: message })\n});\nreturn `Posted to Discord (status: ${response.statusCode || 'ok'})`;"
+      },
+      "id": "discord-tool-node",
+      "name": "post_to_discord",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [820, 560]
+    }
+  ],
+  "connections": {
+    "Grafana Alert Webhook": {
+      "main": [
+        [
+          {"node": "Respond to Grafana", "type": "main", "index": 0},
+          {"node": "Parse Alert Payload", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Parse Alert Payload": {
+      "main": [
+        [{"node": "Skip if empty", "type": "main", "index": 0}]
+      ]
+    },
+    "Skip if empty": {
+      "main": [
+        [],
+        [{"node": "NOLA Triage Agent", "type": "main", "index": 0}]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [{"node": "NOLA Triage Agent", "type": "ai_languageModel", "index": 0}]
+      ]
+    },
+    "query_loki": {
+      "ai_tool": [
+        [{"node": "NOLA Triage Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "post_to_discord": {
+      "ai_tool": [
+        [{"node": "NOLA Triage Agent", "type": "ai_tool", "index": 0}]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{"name": "nola"}, {"name": "alerts"}]
+}

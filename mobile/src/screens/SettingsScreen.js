@@ -18,7 +18,24 @@ export default function SettingsScreen() {
 
   const update = (key, value) => setDraft(prev => ({ ...prev, [key]: value }));
 
+  const URL_FIELDS = {
+    checkcleUrl: 'CheckCle URL',
+    ampUrl:      'AMP URL',
+    n8nWebhookUrl: 'n8n Webhook URL',
+    ntopngUrl:   'ntopng URL',
+    grafanaUrl:  'Grafana URL',
+  };
+
   const save = async () => {
+    // Validate URL fields before persisting
+    for (const [key, label] of Object.entries(URL_FIELDS)) {
+      const val = draft[key];
+      if (!val) continue;
+      try { new URL(val); } catch {
+        Alert.alert('Invalid URL', `${label} is not a valid URL:\n"${val}"`);
+        return;
+      }
+    }
     await saveSettings(draft);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -118,6 +135,15 @@ export default function SettingsScreen() {
         <Section title="NOLA Chat" icon="chatbubble-ellipses-outline">
           <Field label="n8n Webhook URL" value={draft.n8nWebhookUrl} onChange={v => update('n8nWebhookUrl', v)} autoCapitalize="none" keyboardType="url" />
           <TestRow testKey="n8n" label="Test Webhook" onPress={testN8N} result={testResults.n8n} loading={testing.n8n} />
+        </Section>
+
+        <Section title="Polling" icon="timer-outline">
+          <Field
+            label="Services refresh interval (seconds)"
+            value={String(draft.pollIntervalSeconds ?? 30)}
+            onChange={v => update('pollIntervalSeconds', parseInt(v) || 30)}
+            keyboardType="number-pad"
+          />
         </Section>
 
         <Section title="Debug" icon="bug-outline">
