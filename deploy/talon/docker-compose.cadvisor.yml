@@ -1,0 +1,28 @@
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+
+# Deploy: docker compose -f docker-compose.cadvisor.yml up -d
+#
+# Prometheus scrape config to add (on containy prometheus.yml):
+#   - job_name: cadvisor
+#     static_configs:
+#       - targets: ['10.0.9.12:8080']
+#         labels:
+#           instance: talon
+#
+# Dashboard env (NOLA .env):
+#   CADVISOR_HOSTS=talon,falcon,eagle

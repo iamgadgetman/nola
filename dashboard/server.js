@@ -38,6 +38,8 @@ const PVE_API_TOKEN = process.env.PVE_API_TOKEN || '';
 // Node name as it appears in the Proxmox cluster (default: pve)
 const PVE_NODE      = process.env.PVE_NODE      || 'pve';
 
+const CADVISOR_HOSTS = (process.env.CADVISOR_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean);
+
 // ─── Auth middleware ────────────────────────────────────────────────────────
 // Two supported modes (both require AUTH_ENABLED=true):
 //   1. Bearer token — set API_TOKEN; clients send "Authorization: Bearer <token>"
@@ -492,19 +494,64 @@ async function fetchProxmox() {
   };
 }
 
+// ─── cAdvisor container stats ────────────────────────────────────────────────
+async function fetchContainers() {
+  if (!CADVISOR_HOSTS.length) return [];
+
+  const [cpu, mem, memLimit] = await Promise.all([
+    promQuery('sum by (instance, name) (rate(container_cpu_usage_seconds_total{name!="",job="cadvisor"}[5m])) * 100'),
+    promQuery('container_memory_usage_bytes{name!="",job="cadvisor"}'),
+    promQuery('container_spec_memory_limit_bytes{name!="",job="cadvisor"}'),
+  ]);
+
+  const byHost = {};
+  const addMetric = (results, key) => {
+    for (const r of (results || [])) {
+      const host = stripPort(r.metric.instance);
+      if (!CADVISOR_HOSTS.includes(host)) continue;
+      const name = r.metric.name;
+      if (!byHost[host]) byHost[host] = {};
+      if (!byHost[host][name]) byHost[host][name] = { name };
+      byHost[host][name][key] = parseFloat(r.value[1]);
+    }
+  };
+
+  addMetric(cpu,      'cpu_pct');
+  addMetric(mem,      'mem_bytes');
+  addMetric(memLimit, 'mem_limit_bytes');
+
+  const roundMb = b => Math.round(b / 1e6);
+
+  return CADVISOR_HOSTS
+    .filter(host => byHost[host])
+    .map(host => ({
+      host,
+      containers: Object.values(byHost[host])
+        .map(c => ({
+          name:         c.name,
+          cpu_pct:      c.cpu_pct      != null ? Math.round(c.cpu_pct * 10) / 10  : null,
+          mem_mb:       c.mem_bytes    != null ? roundMb(c.mem_bytes)              : null,
+          mem_limit_mb: (c.mem_limit_bytes > 0) ? roundMb(c.mem_limit_bytes)      : null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, containersResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
     fetchProxmox(),
+    fetchContainers(),
   ]);
 
-  const prom   = promResult.status   === 'fulfilled' ? promResult.value   : null;
-  const alerts = alertsResult.status === 'fulfilled' ? alertsResult.value : [];
-  const wan    = wanResult.status    === 'fulfilled' ? wanResult.value    : null;
-  const pve    = pveResult.status    === 'fulfilled' ? pveResult.value    : null;
+  const prom       = promResult.status       === 'fulfilled' ? promResult.value       : null;
+  const alerts     = alertsResult.status     === 'fulfilled' ? alertsResult.value     : [];
+  const wan        = wanResult.status        === 'fulfilled' ? wanResult.value        : null;
+  const pve        = pveResult.status        === 'fulfilled' ? pveResult.value        : null;
+  const containers = containersResult.status === 'fulfilled' ? containersResult.value : [];
 
   res.json({
     timestamp: new Date().toISOString(),
@@ -514,6 +561,7 @@ app.get('/api/data', async (req, res) => {
     alerts,
     wan,
     pve,
+    containers,
     errors: {
       prometheus: prom   ? null : 'fetch failed',
       alerts:     alertsResult.status === 'rejected' ? 'fetch failed' : null,

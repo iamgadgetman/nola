@@ -76,6 +76,7 @@ function renderDashboard(d) {
   renderCrowdsec(d.crowdsec);
   renderAlerts(d.alerts);
   renderProxmox(d.pve);
+  renderContainers(d.containers);
   updateSummary(d);
   document.getElementById('last-updated').textContent =
     `Updated ${new Date(d.timestamp).toLocaleTimeString()}`;
@@ -271,6 +272,48 @@ function renderProxmox(pve) {
       }).join('');
     }
   }
+}
+
+// ─── Container Stats Card ─────────────────────────────────
+function renderContainers(containers) {
+  const section = document.getElementById('containers-section');
+  const grid    = document.getElementById('containers-grid');
+  if (!section || !grid) return;
+
+  if (!containers?.length) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  grid.innerHTML = containers.map(h => `
+    <div class="container-host-col">
+      <div class="container-host-label">${escHtml(h.host)}</div>
+      ${h.containers.map(c => {
+        const cpuPct = Math.min(c.cpu_pct ?? 0, 100);
+        const memPct = (c.mem_limit_mb > 0)
+          ? Math.min((c.mem_mb / c.mem_limit_mb) * 100, 100) : 0;
+        const memVal = c.mem_limit_mb
+          ? `${c.mem_mb ?? '—'}/${c.mem_limit_mb}M`
+          : `${c.mem_mb ?? '—'}M`;
+        return `<div class="container-row">
+          <div class="container-name">${escHtml(c.name)}</div>
+          <div class="container-metrics">
+            <div class="container-metric">
+              <span class="container-metric-label">CPU</span>
+              <div class="mini-gauge-bar"><div class="mini-gauge-fill cpu" style="width:${cpuPct}%"></div></div>
+              <span class="container-metric-val">${c.cpu_pct != null ? c.cpu_pct.toFixed(1) + '%' : '—'}</span>
+            </div>
+            <div class="container-metric">
+              <span class="container-metric-label">MEM</span>
+              <div class="mini-gauge-bar"><div class="mini-gauge-fill ram" style="width:${memPct}%"></div></div>
+              <span class="container-metric-val">${memVal}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
 }
 
 function pveBar(val, max, cls) {
