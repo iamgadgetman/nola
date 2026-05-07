@@ -20,6 +20,7 @@ let progressDuration = 0;
 document.addEventListener('DOMContentLoaded', () => {
   startClock();
   initAsk();
+  initCollapsibles();
 
   // Check for ?kiosk param
   if (new URLSearchParams(window.location.search).has('kiosk')) {
@@ -277,8 +278,8 @@ function renderProxmox(pve) {
 // ─── Container Stats Card ─────────────────────────────────
 function renderContainers(containers) {
   const section = document.getElementById('containers-section');
-  const grid    = document.getElementById('containers-grid');
-  if (!section || !grid) return;
+  const list    = document.getElementById('containers-grid');
+  if (!section || !list) return;
 
   if (!containers?.length) {
     section.style.display = 'none';
@@ -286,34 +287,90 @@ function renderContainers(containers) {
   }
   section.style.display = '';
 
-  grid.innerHTML = containers.map(h => `
-    <div class="container-host-col">
-      <div class="container-host-label">${escHtml(h.host)}</div>
-      ${h.containers.map(c => {
-        const cpuPct = Math.min(c.cpu_pct ?? 0, 100);
-        const memPct = (c.mem_limit_mb > 0)
-          ? Math.min((c.mem_mb / c.mem_limit_mb) * 100, 100) : 0;
-        const memVal = c.mem_limit_mb
-          ? `${c.mem_mb ?? '—'}/${c.mem_limit_mb}M`
-          : `${c.mem_mb ?? '—'}M`;
-        return `<div class="container-row">
-          <div class="container-name">${escHtml(c.name)}</div>
-          <div class="container-metrics">
-            <div class="container-metric">
-              <span class="container-metric-label">CPU</span>
-              <div class="mini-gauge-bar"><div class="mini-gauge-fill cpu" style="width:${cpuPct}%"></div></div>
-              <span class="container-metric-val">${c.cpu_pct != null ? c.cpu_pct.toFixed(1) + '%' : '—'}</span>
-            </div>
-            <div class="container-metric">
-              <span class="container-metric-label">MEM</span>
-              <div class="mini-gauge-bar"><div class="mini-gauge-fill ram" style="width:${memPct}%"></div></div>
-              <span class="container-metric-val">${memVal}</span>
-            </div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-  `).join('');
+  const total   = containers.reduce((s, h) => s + h.containers.length, 0);
+  const totalEl = document.getElementById('containers-total-badge');
+  if (totalEl) { totalEl.textContent = `${total} total`; totalEl.style.display = ''; }
+
+  list.innerHTML = containers.map(h => {
+    const ctrs   = h.containers;
+    const count  = ctrs.length;
+    const avgCpu = count
+      ? ctrs.reduce((s, c) => s + (c.cpu_pct ?? 0), 0) / count : 0;
+    const memMb  = ctrs.reduce((s, c) => s + (c.mem_mb ?? 0), 0);
+    const memStr = memMb >= 1024 ? `${(memMb / 1024).toFixed(1)} GB` : `${memMb} MB`;
+    const cpuPct = Math.min(avgCpu, 100);
+    const expanded = localStorage.getItem(`ctr:${h.host}`) === '1';
+
+    return `<div class="ctr-host${expanded ? ' expanded' : ''}" id="ctr-host-${escHtml(h.host)}">
+      <div class="ctr-host-header" onclick="toggleContainerHost('${escHtml(h.host)}')">
+        <span class="ctr-chevron">▶</span>
+        <span class="ctr-host-name">${escHtml(h.host)}</span>
+        <span class="ctr-host-count">${count}</span>
+        <div class="ctr-host-agg-cpu">
+          <span class="ctr-agg-label">avg cpu</span>
+          <div class="mini-gauge-bar"><div class="mini-gauge-fill cpu" style="width:${cpuPct}%"></div></div>
+          <span class="ctr-agg-val">${avgCpu.toFixed(1)}%</span>
+        </div>
+        <div class="ctr-host-agg-mem">
+          <span class="ctr-agg-label">mem</span>
+          <span class="ctr-agg-val">${memStr}</span>
+        </div>
+      </div>
+      <div class="ctr-host-detail">
+        <div class="ctr-detail-inner">
+          ${ctrs.map(c => {
+            const cpuPct2 = Math.min(c.cpu_pct ?? 0, 100);
+            const memPct  = c.mem_limit_mb > 0
+              ? Math.min((c.mem_mb / c.mem_limit_mb) * 100, 100) : 0;
+            const memVal  = c.mem_limit_mb
+              ? `${c.mem_mb}/${c.mem_limit_mb}M`
+              : c.mem_mb >= 1024
+                ? `${(c.mem_mb / 1024).toFixed(1)}G`
+                : `${c.mem_mb ?? '—'}M`;
+            return `<div class="ctr-row">
+              <div class="ctr-name">${escHtml(c.name)}</div>
+              <div class="ctr-metric">
+                <span class="ctr-metric-label">CPU</span>
+                <div class="mini-gauge-bar"><div class="mini-gauge-fill cpu" style="width:${cpuPct2}%"></div></div>
+                <span class="ctr-metric-val">${c.cpu_pct != null ? c.cpu_pct.toFixed(1) + '%' : '—'}</span>
+              </div>
+              <div class="ctr-metric">
+                <span class="ctr-metric-label">MEM</span>
+                <div class="mini-gauge-bar"><div class="mini-gauge-fill ram" style="width:${memPct}%"></div></div>
+                <span class="ctr-metric-val">${memVal}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleContainerHost(host) {
+  const el = document.getElementById(`ctr-host-${host}`);
+  if (!el) return;
+  const expanded = el.classList.toggle('expanded');
+  localStorage.setItem(`ctr:${host}`, expanded ? '1' : '0');
+}
+window.toggleContainerHost = toggleContainerHost;
+
+function initCollapsibles() {
+  document.querySelectorAll('[data-target]').forEach(btn => {
+    const id = btn.dataset.target;
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (localStorage.getItem(`collapse:${id}`) === '1') {
+      el.classList.add('collapsed');
+      btn.classList.add('collapsed');
+    }
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const collapsed = el.classList.toggle('collapsed');
+      btn.classList.toggle('collapsed', collapsed);
+      localStorage.setItem(`collapse:${id}`, collapsed ? '1' : '0');
+    });
+  });
 }
 
 function pveBar(val, max, cls) {

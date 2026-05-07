@@ -92,6 +92,7 @@
         <span class="card-icon">🖥️</span>
         <span class="nola-card__title">Proxmox VE</span>
         <span class="nola-card__badge pve-version-badge" id="pve-version-badge">—</span>
+        <button class="collapse-btn" data-target="pve-columns" title="Toggle VMs &amp; Storage"><span class="chv">▾</span></button>
       </div>
       <div class="nola-card__body pve-body" id="pve-body">
         <div class="pve-node-row" id="pve-node-row">
@@ -101,7 +102,7 @@
           <span class="pve-node-sep">·</span>
           <span class="pve-node-stat" id="pve-node-uptime">up —</span>
         </div>
-        <div class="pve-columns">
+        <div class="pve-columns collapsible-body" id="pve-columns">
           <div class="pve-col pve-col-vms">
             <div class="pve-col-title">Virtual Machines</div>
             <div id="pve-vm-list"><div class="pve-loading">Loading…</div></div>
@@ -122,10 +123,9 @@
         <span class="card-icon">📦</span>
         <span class="nola-card__title">Container Stats</span>
         <span class="nola-card__badge">live</span>
+        <span class="nola-card__badge" id="containers-total-badge" style="display:none"></span>
       </div>
-      <div class="containers-grid" id="containers-grid">
-        <div class="loading-placeholder">Loading…</div>
-      </div>
+      <div class="ctr-list" id="containers-grid"></div>
     </div>
   </section>
 
