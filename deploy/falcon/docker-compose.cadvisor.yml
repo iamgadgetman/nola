@@ -1,0 +1,29 @@
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+
+# Reflects the LIVE deployment on falcon (10.0.1.9) — already running and scraped
+# as of 2026-06-18. Do NOT re-deploy blindly; cAdvisor already binds :8080 here.
+#
+# Deploy (fresh host only): docker compose -f docker-compose.cadvisor.yml up -d
+#
+# Prometheus scrape entry (job "cadvisor" in ~/deploy/prometheus/prometheus.yml on union):
+#   - targets: ['10.0.1.9:8080']
+#     labels:
+#       instance: falcon
+#
+# The NOLA dashboard reads container stats straight from job="cadvisor" in Prometheus
+# (server.js fetchContainers) — no per-host env var is required.

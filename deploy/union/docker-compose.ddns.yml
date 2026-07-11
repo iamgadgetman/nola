@@ -1,0 +1,16 @@
+services:
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    restart: always
+    network_mode: host
+    cap_drop: [ALL]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    environment:
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - DOMAINS=halt.example.com
+      - PROXIED=false
+      - UPDATE_CRON=@every 5m
+      - IP4_PROVIDER=cloudflare.trace
+      - IP6_PROVIDER=none

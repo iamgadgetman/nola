@@ -1,0 +1,378 @@
+{
+  "name": "nola main AI agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nola",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.body.message }}",
+        "options": {
+          "systemMessage": "={{ $env.NOLA_SYSTEM_PROMPT }}\n\nCurrent user: {{ $json.body.author }}\nSource: {{ $json.body.source }}"
+        }
+      },
+      "id": "nola-agent",
+      "name": "NOLA AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.NOLA_MODEL }}",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "claude-model",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [
+        460,
+        520
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "get_ups_status",
+        "description": "Get the current UPS (uninterruptible power supply) status including battery level, load percentage, runtime remaining, and whether the UPS is on battery or utility power. Use this when the user asks about power, UPS, battery backup, or outages.",
+        "jsCode": "// Query both UPS units via apcupsd NIS\nconst net = require('net');\nconst UPS_PORT = parseInt(process.env.UPS_PORT || '3551');\nconst hosts = [\n  { name: 'stop (Hawk House)', host: process.env.UPS_HOST      || 'stop.galaxy' },\n  { name: 'halt (The Fort)',   host: process.env.UPS_HOST_FORT || 'halt.universe' },\n];\n\nfunction readApcupsd(host) {\n  return new Promise((resolve, reject) => {\n    const client = net.createConnection(UPS_PORT, host, () => {\n      const cmd = Buffer.alloc(8);\n      cmd.writeUInt16BE(6, 0);\n      cmd.write('status', 2);\n      client.write(cmd);\n    });\n    let data = Buffer.alloc(0);\n    client.on('data', chunk => { data = Buffer.concat([data, chunk]); });\n    client.on('end', () => resolve(data.toString('ascii')));\n    client.on('error', reject);\n    setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 5000);\n  });\n}\n\nfunction parseUps(raw) {\n  const kv = {};\n  for (const line of raw.split('\\n').filter(l => l.trim())) {\n    const idx = line.indexOf(':');\n    if (idx > 0) kv[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();\n  }\n  return kv;\n}\n\nconst results = await Promise.all(hosts.map(async ({ name, host }) => {\n  try {\n    const raw = await readApcupsd(host);\n    const kv  = parseUps(raw);\n    const status   = kv['STATUS']   || 'UNKNOWN';\n    const bcharge  = kv['BCHARGE']  || '?';\n    const loadpct  = kv['LOADPCT']  || '?';\n    const timeleft = kv['TIMELEFT'] || '?';\n    const model    = kv['MODEL']    || 'UPS';\n    return `**${name}** — ${model}: ${status} | Battery ${bcharge} | Load ${loadpct} | Runtime ${timeleft}`;\n  } catch (err) {\n    return `**${name}** — unreachable: ${err.message}`;\n  }\n}));\n\nreturn results.join('\\n')"
+      },
+      "id": "tool-ups",
+      "name": "get_ups_status",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        240,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "get_netdata_metrics",
+        "description": "Get current system metrics (CPU, RAM, disk, uptime, network) from a specific host via Netdata. Specify the host name. Available hosts are configured in NETDATA_HOSTS env var.",
+        "method": "GET",
+        "url": "={{ (() => { const hosts = {}; ($env.NETDATA_HOSTS || '').split(',').forEach(h => { const [n,u] = h.split(':http'); if(n && u) hosts[n.trim()] = 'http'+u.trim(); }); return hosts[$parameter.host] || Object.values(hosts)[0] || 'http://localhost:19999'; })() }}/api/v1/allmetrics?format=json",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "host",
+              "description": "Host name to query (e.g. host1, host2)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "tool-netdata",
+      "name": "get_netdata_metrics",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [
+        360,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "query_prometheus",
+        "description": "Run a PromQL query against Prometheus to get metrics. Use this for CPU, memory, disk, network, uptime, or any custom metrics. Returns the raw query result. Example queries: up{job=\"node\"}, 100 - (avg by (instance)(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+        "method": "GET",
+        "url": "={{ $env.PROMETHEUS_URL }}/api/v1/query",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "description": "PromQL query string"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "tool-prometheus",
+      "name": "query_prometheus",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [
+        580,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "run_command",
+        "description": "Run a shell command on an allowed homelab host via SSH. Only use for safe, read-only commands unless the user explicitly confirms a destructive action. Allowed hosts are defined in SSH_ALLOWED_HOSTS.",
+        "workflowId": "={{ $env.WORKFLOW_ID_RUN_COMMAND }}",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "host": "={{ $parameter.host }}",
+            "command": "={{ $parameter.command }}"
+          }
+        },
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "host",
+              "description": "Target host label (must be in SSH_ALLOWED_HOSTS)"
+            },
+            {
+              "name": "command",
+              "description": "Shell command to run"
+            }
+          ]
+        }
+      },
+      "id": "tool-run-command",
+      "name": "run_command",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1,
+      "position": [
+        700,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "query_netbox",
+        "description": "Search NetBox network inventory for devices, IP addresses, or prefixes. Use this when asked about what a specific IP is, what devices are on a subnet, or what role a host serves. Pass an IP (e.g. 10.0.2.74), a hostname fragment (e.g. containy), or a subnet (e.g. 10.0.2.0/24).",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "description": "IP address, hostname fragment, or subnet to look up"
+            },
+            {
+              "name": "type",
+              "description": "Optional: devices, ips, or prefixes (default: auto-detect)"
+            }
+          ]
+        },
+        "jsCode": "function httpGet(url, headers = {}) {\n  return new Promise((resolve, reject) => {\n    const parsed = new (require('url').URL)(url);\n    const lib = parsed.protocol === 'https:' ? require('https') : require('http');\n    const options = {\n      hostname: parsed.hostname,\n      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),\n      path: parsed.pathname + parsed.search,\n      method: 'GET',\n      headers,\n      timeout: 10000\n    };\n    const req = lib.request(options, (res) => {\n      let data = '';\n      res.on('data', c => data += c);\n      res.on('end', () => {\n        try { resolve(JSON.parse(data)); }\n        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0,120))); }\n      });\n    });\n    req.on('error', reject);\n    req.on('timeout', () => { req.destroy(); reject(new Error('request timed out')); });\n    req.end();\n  });\n}\n\nconst netboxUrl = process.env.NETBOX_URL || 'https://netbox.example.com';\nconst token = process.env.NETBOX_TOKEN || '';\nconst query = ($parameter.query || '').trim();\nconst type  = ($parameter.type  || 'auto').toLowerCase();\n\nconst headers = {\n  'Authorization': `Token ${token}`,\n  'Accept': 'application/json'\n};\n\nasync function nbGet(path) {\n  try {\n    return await httpGet(`${netboxUrl}/api/${path}`, headers);\n  } catch (e) {\n    return null;\n  }\n}\n\nconst results = [];\n\ntry {\n  const isIp     = /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}/.test(query);\n  const isPrefix = isIp && query.includes('/');\n\n  if (type === 'auto' || type === 'ips' || (isIp && !isPrefix)) {\n    const data = await nbGet(`ipam/ip-addresses/?address=${encodeURIComponent(query)}&limit=10`);\n    for (const ip of (data?.results || [])) {\n      const dev   = ip.assigned_object?.device?.name || ip.assigned_object?.virtual_machine?.name || '';\n      const iface = ip.assigned_object?.name || '';\n      const tag   = [dev, iface].filter(Boolean).join(' / ');\n      results.push(`IP ${ip.address}: ${tag || 'unassigned'} (${ip.status?.label || '?'})`);\n    }\n  }\n\n  if (type === 'prefixes' || (type === 'auto' && isPrefix)) {\n    const data = await nbGet(`ipam/prefixes/?prefix=${encodeURIComponent(query)}&limit=10`);\n    for (const p of (data?.results || [])) {\n      results.push(`Prefix ${p.prefix}: ${p.description || p.site?.name || ''} (${p.status?.label || '?'})`);\n    }\n  }\n\n  if (type === 'auto' || type === 'devices') {\n    const data = await nbGet(`dcim/devices/?q=${encodeURIComponent(query)}&limit=10`);\n    for (const d of (data?.results || [])) {\n      const role = d.device_role?.name || d.role?.name || '';\n      const site = d.site?.name || '';\n      const ip   = d.primary_ip?.address || '';\n      results.push(`Device ${d.name}: ${role} | ${site}${ip ? ' | ' + ip : ''}`);\n    }\n  }\n\n  if (!results.length) return `No NetBox results for: ${query}`;\n  return results.join('\\n');\n} catch (err) {\n  return `NetBox query failed: ${err.message}`;\n}"
+      },
+      "id": "tool-netbox",
+      "name": "query_netbox",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "get_traffic_stats",
+        "description": "Get current network traffic statistics from ntopng on the fort firewall (ntopng.universe). Returns per-interface throughput (Mbps), active host count, and flow count. Use this when asked about bandwidth, traffic, what's saturating a link, or network utilization.",
+        "jsCode": "function httpGet(url, headers = {}) {\n  return new Promise((resolve, reject) => {\n    const parsed = new (require('url').URL)(url);\n    const lib = parsed.protocol === 'https:' ? require('https') : require('http');\n    const options = {\n      hostname: parsed.hostname,\n      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),\n      path: parsed.pathname + parsed.search,\n      method: 'GET',\n      headers,\n      timeout: 10000\n    };\n    const req = lib.request(options, (res) => {\n      let data = '';\n      res.on('data', c => data += c);\n      res.on('end', () => {\n        try { resolve(JSON.parse(data)); }\n        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0,120))); }\n      });\n    });\n    req.on('error', reject);\n    req.on('timeout', () => { req.destroy(); reject(new Error('request timed out')); });\n    req.end();\n  });\n}\n\nconst ntopUrl = process.env.NTOPNG_URL || 'http://ntopng.universe:3005';\nconst token   = process.env.NTOPNG_TOKEN || '';\nconst authHeaders = { 'Authorization': `Token ${token}` };\n\nasync function ntopGet(path) {\n  try {\n    const data = await httpGet(`${ntopUrl}${path}`, authHeaders);\n    return (data?.rc === 0) ? data.rsp : null;\n  } catch (e) {\n    return null;\n  }\n}\n\ntry {\n  const interfaces = await ntopGet('/lua/rest/v2/get/ntopng/interfaces.lua');\n  if (!interfaces || !interfaces.length) return 'ntopng unavailable or token invalid';\n\n  const lines = ['**Fort firewall \u2014 live traffic (ntopng)**'];\n  for (const iface of interfaces.slice(0, 6)) {\n    const d = await ntopGet(`/lua/rest/v2/get/interface/data.lua?ifid=${iface.ifid}`);\n    if (!d) continue;\n    const mbps  = d.throughput_bps != null ? `${(d.throughput_bps / 1_000_000).toFixed(2)} Mbps` : 'N/A';\n    const hosts = d.num_hosts  ?? d.hosts  ?? 0;\n    const flows = d.num_flows  ?? d.flows  ?? 0;\n    const drops = d.tot_pkt_drops ? ` | drops: ${d.tot_pkt_drops}` : '';\n    lines.push(`**${iface.ifname}**: ${mbps} | ${hosts} hosts | ${flows} flows${drops}`);\n  }\n  return lines.join('\\n');\n} catch (err) {\n  return `Traffic stats failed: ${err.message}`;\n}"
+      },
+      "id": "tool-traffic",
+      "name": "get_traffic_stats",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "query_loki",
+        "description": "Query Loki for logs using LogQL. Use this to search logs from Traefik (web traffic, errors, 4xx/5xx), Docker containers, or OPNsense syslog (firewalls halt/stop). Label examples: {job=\"traefik\"}, {container=\"n8n\"}, {host=\"halt\"}, {host=\"stop\"}. Pipe filters: |= \"error\", | json | status >= 500.",
+        "parametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "description": "LogQL query string, e.g. {job=\"traefik\"} |= \"error\""
+            },
+            {
+              "name": "since",
+              "description": "Lookback window: 15m, 1h, 6h, 24h (default 1h)"
+            },
+            {
+              "name": "limit",
+              "description": "Max log lines to return (default 50)"
+            }
+          ]
+        },
+        "jsCode": "function httpGet(url, headers = {}) {\n  return new Promise((resolve, reject) => {\n    const parsed = new (require('url').URL)(url);\n    const lib = parsed.protocol === 'https:' ? require('https') : require('http');\n    const options = {\n      hostname: parsed.hostname,\n      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),\n      path: parsed.pathname + parsed.search,\n      method: 'GET',\n      headers,\n      timeout: 10000\n    };\n    const req = lib.request(options, (res) => {\n      let data = '';\n      res.on('data', c => data += c);\n      res.on('end', () => {\n        try { resolve(JSON.parse(data)); }\n        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0,120))); }\n      });\n    });\n    req.on('error', reject);\n    req.on('timeout', () => { req.destroy(); reject(new Error('request timed out')); });\n    req.end();\n  });\n}\n\nconst lokiUrl = process.env.LOKI_URL || 'http://loki.galaxy:3100';\nconst logqlQuery = $parameter.query;\nconst since = ($parameter.since || '1h').trim();\nconst limit = parseInt($parameter.limit || '50');\n\nconst match = since.match(/^(\\d+)(s|m|h|d)$/);\nconst multipliers = { s: 1000, m: 60000, h: 3600000, d: 86400000 };\nconst offsetMs = match ? parseInt(match[1]) * (multipliers[match[2]] || 3600000) : 3600000;\n\nconst nowMs = Date.now();\nconst startNs = (nowMs - offsetMs).toString() + '000000';\nconst endNs   = nowMs.toString() + '000000';\n\ntry {\n  const url = `${lokiUrl}/loki/api/v1/query_range?query=${encodeURIComponent(logqlQuery)}&start=${startNs}&end=${endNs}&limit=${limit}&direction=backward`;\n  const data = await httpGet(url);\n  const streams = data?.data?.result || [];\n\n  if (!streams.length) return `No logs found for: ${logqlQuery} (last ${since})`;\n\n  const lines = [];\n  for (const stream of streams) {\n    const labels = Object.entries(stream.stream || {}).map(([k,v]) => `${k}=${v}`).join(' ');\n    for (const [ts, msg] of (stream.values || [])) {\n      const time = new Date(Math.floor(parseInt(ts) / 1_000_000)).toISOString();\n      lines.push(`[${time}] {${labels}} ${msg}`);\n    }\n  }\n  lines.sort().reverse();\n  return lines.slice(0, limit).join('\\n') || 'No log entries returned';\n} catch (err) {\n  return `Loki query failed: ${err.message}`;\n}"
+      },
+      "id": "tool-loki",
+      "name": "query_loki",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        940,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "name": "post_to_discord",
+        "description": "Post a message to the Discord alert channel. Use this to send notifications, alerts, or summaries that the user should see even if they didn't ask a question.",
+        "jsCode": "const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;\nif (!WEBHOOK_URL) return 'Discord webhook URL not configured (set DISCORD_WEBHOOK_URL)';\n\nconst message = $parameter.message;\nconst response = await $helpers.httpRequest({\n  method: 'POST',\n  url: WEBHOOK_URL,\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ content: message })\n});\nreturn `Posted to Discord (status: ${response.statusCode || 'ok'})`;"
+      },
+      "id": "tool-post-discord",
+      "name": "post_to_discord",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        820,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_ups_status": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_netdata_metrics": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query_prometheus": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_command": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "post_to_discord": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query_loki": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_traffic_stats": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query_netbox": {
+      "ai_tool": [
+        [
+          {
+            "node": "NOLA AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "nola"
+  ]
+}

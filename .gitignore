@@ -1,0 +1,42 @@
+.env
+*.env
+.env.*
+*.key
+*.pem
+*.secret
+n8n_storage/
+postgres_storage/
+ollama_storage/
+qdrant_storage/
+__pycache__/
+*.pyc
+.DS_Store
+/tmp/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+
+# Binaries / packages (don't belong in git)
+*.deb
+*.iso
+
+# Scratch / working notes (not for public repo)
+dashboard-adding-pve.txt
+dns-fixup.txt
+nola-troubleshooting.txt
+integrations/hola-nola-creation.txt
+
+# Internal planning docs (not for public repo)
+ORIGINAL_JEEVES_DUMP.md
+README_FIRST.md
+PROJECT_README.md
+SETUP_INSTRUCTIONS.md
+jeeves-main-workflow.json
+
+# Build transcript (contains secrets — never publish)
+nola-creation.txt
+
+# Local Claude Code settings
+.claude/
+**/.claude/
+*.local.json

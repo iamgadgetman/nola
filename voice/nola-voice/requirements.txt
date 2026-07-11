@@ -1,0 +1,19 @@
+# openwakeword is installed with --no-deps (tflite-runtime is Python<3.12 only)
+# see setup.sh for install order
+openwakeword>=0.6.0
+faster-whisper>=1.0.0
+openai>=1.30.0
+elevenlabs>=1.9.0
+sounddevice>=0.5.0
+soundfile>=0.12.0
+numpy>=1.24.0
+scipy>=1.11.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+# Training dependencies (only needed for train_hola_nola.py)
+edge-tts>=7.0.0
+scikit-learn>=1.4.0
+skl2onnx>=1.16.0
+librosa>=0.10.0
+onnx>=1.16.0
+tqdm>=4.66.0
