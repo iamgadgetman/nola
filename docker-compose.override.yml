@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  n8n:
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - NODE_FUNCTION_ALLOW_BUILTIN=net,http,https,url,crypto,dns
+      - NODE_FUNCTION_ALLOW_EXTERNAL=*
+
+  nola-bot:
+    build: ./discord-bot
+    image: nola-discord-bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - N8N_WEBHOOK=${N8N_WEBHOOK_URL}
+    depends_on:
+      - n8n
+    networks:
+      - default

@@ -1,0 +1,13 @@
+services:
+  nola-dashboard:
+    build: .
+    container_name: nola-dashboard
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      18_Net:
+        ipv4_address: 10.0.5.43
+
+networks:
+  18_Net:
+    external: true

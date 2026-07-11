@@ -1,0 +1,70 @@
+{
+  "name": "nola — librenms alert relay",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nola-librenms-alert",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "webhook-librenms",
+      "name": "LibreNMS Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\n// LibreNMS alert payload fields\nconst title    = body.title    || body.rule    || 'Alert';\nconst host     = body.hostname || body.host    || 'unknown host';\nconst severity = body.severity || 'unknown';\nconst message  = body.message  || body.body    || '';\nconst state    = body.state;  // 1=alert, 0=recovery\n\nconst emoji    = state === 0 ? '✅' : (severity === 'critical' ? '🔴' : '🟡');\nconst stateStr = state === 0 ? 'RESOLVED' : 'FIRING';\n\nconst discord_message = [\n  `${emoji} **LibreNMS ${stateStr}** — ${title}`,\n  `**Host:** ${host}`,\n  `**Severity:** ${severity}`,\n  message ? `**Detail:** ${message}` : null\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { discord_message, severity, state } }];"
+      },
+      "id": "format-alert",
+      "name": "Format Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "content", "value": "={{ $json.discord_message }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "post-discord",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [660, 300]
+    }
+  ],
+  "connections": {
+    "LibreNMS Webhook": {
+      "main": [
+        [{ "node": "Format Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Alert": {
+      "main": [
+        [{ "node": "Post to Discord", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["nola", "alert"]
+}

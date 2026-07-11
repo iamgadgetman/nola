@@ -1,0 +1,88 @@
+{
+  "name": "nola tool — run_command",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safety check: validate host and command before SSH\nconst allowedHosts = (process.env.SSH_ALLOWED_HOSTS || '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean);\nconst host = ($input.first().json.host || '').trim().toLowerCase();\nconst command = ($input.first().json.command || '').trim();\n\n// Blocked command patterns — destructive or dangerous operations\nconst blockedPatterns = [\n  /rm\\s+-rf/i,\n  /mkfs/i,\n  /dd\\s+if/i,\n  /:\\(\\)/,           // fork bomb\n  />\\s*\\/dev\\/sd/i,  // disk overwrite\n  /shutdown/i,\n  /reboot/i,\n  /halt/i,\n  /poweroff/i,\n  /passwd/i,\n  /userdel/i,\n  /chmod\\s+777/i,\n  /curl.*\\|.*sh/i,   // curl pipe to shell\n  /wget.*\\|.*sh/i,\n];\n\nif (!host) throw new Error('run_command: no host specified');\nif (!command) throw new Error('run_command: no command specified');\nif (!allowedHosts.includes(host)) {\n  throw new Error(`run_command: host '${host}' is not in SSH_ALLOWED_HOSTS (${allowedHosts.join(', ')})`);\n}\nfor (const pattern of blockedPatterns) {\n  if (pattern.test(command)) {\n    throw new Error(`run_command: command blocked by safety filter: ${command}`);\n  }\n}\n\nreturn [{ json: { host, command } }];"
+      },
+      "id": "safety-check",
+      "name": "Safety Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolve SSH connection details from env vars\nconst host = $input.first().json.host.toUpperCase();\nconst sshHost = process.env[`SSH_HOST_${host}`];\nconst sshUser = process.env[`SSH_USER_${host}`];\nconst sshKey  = process.env[`SSH_KEY_${host}`];\n\nif (!sshHost) throw new Error(`run_command: SSH_HOST_${host} not set in environment`);\nif (!sshUser) throw new Error(`run_command: SSH_USER_${host} not set in environment`);\n\nreturn [{ json: {\n  host: $input.first().json.host,\n  command: $input.first().json.command,\n  sshHost,\n  sshUser,\n  sshKey: sshKey || null\n} }];"
+      },
+      "id": "resolve-connection",
+      "name": "Resolve SSH Connection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "host": "={{ $json.sshHost }}",
+        "port": 22,
+        "username": "={{ $json.sshUser }}",
+        "privateKey": "={{ $json.sshKey }}",
+        "command": "={{ $json.command }}",
+        "options": {
+          "executeCommandAs": "={{ $json.sshUser }}"
+        }
+      },
+      "id": "ssh-execute",
+      "name": "SSH Execute",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst stdout = result.stdout || '';\nconst stderr = result.stderr || '';\nconst exitCode = result.code ?? 0;\n\nlet output = stdout.trim();\nif (stderr.trim()) output += (output ? '\\n' : '') + `STDERR: ${stderr.trim()}`;\nif (exitCode !== 0) output += `\\nExit code: ${exitCode}`;\n\nreturn [{ json: { output: output || '(no output)' } }];"
+      },
+      "id": "format-output",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [{ "node": "Safety Check", "type": "main", "index": 0 }]
+      ]
+    },
+    "Safety Check": {
+      "main": [
+        [{ "node": "Resolve SSH Connection", "type": "main", "index": 0 }]
+      ]
+    },
+    "Resolve SSH Connection": {
+      "main": [
+        [{ "node": "SSH Execute", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Execute": {
+      "main": [
+        [{ "node": "Format Output", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["nola", "tool"]
+}

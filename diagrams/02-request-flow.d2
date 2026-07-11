@@ -1,0 +1,197 @@
+##############################################################################
+# NOLA — Request Flow
+# How a Discord message travels end-to-end through the system
+##############################################################################
+
+direction: down
+
+classes: {
+  step: {
+    shape: rectangle
+    style.fill: "#065f46"
+    style.font-color: white
+    style.border-radius: 6
+  }
+  decision: {
+    shape: diamond
+    style.fill: "#7c3aed"
+    style.font-color: white
+  }
+  tool: {
+    shape: rectangle
+    style.fill: "#581c87"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  external: {
+    shape: rectangle
+    style.fill: "#1e3a5f"
+    style.font-color: white
+    style.border-radius: 4
+  }
+  ai: {
+    shape: rectangle
+    style.fill: "#7c2d12"
+    style.font-color: white
+    style.border-radius: 6
+    style.bold: true
+  }
+  output: {
+    shape: oval
+    style.fill: "#92400e"
+    style.font-color: white
+    style.bold: true
+  }
+  note: {
+    shape: rectangle
+    style.fill: "#f1f5f9"
+    style.font-color: "#334155"
+    style.border-radius: 4
+    style.stroke-dash: 3
+  }
+}
+
+##############################################################################
+# DISCORD MESSAGE PATH
+##############################################################################
+
+d_msg: "User types message\nin #nola Discord channel" {
+  class: output
+}
+
+d_bot: "nola-discord bot\nreceives message event\n(Python · discord.py)" {
+  class: step
+}
+
+d_webhook: "HTTP POST\nto n8n webhook\n/webhook/nola\n{message, author, channel}" {
+  class: step
+}
+
+n8n_trigger: "n8n Webhook Trigger\nnola — main workflow\nreceives payload" {
+  class: step
+}
+
+agent: "NOLA Core Agent\nLangChain AI Agent node\nprepares tool list + system prompt" {
+  class: step
+}
+
+claude: "Claude Sonnet 4.6\nAnthropic API\nreasoning pass" {
+  class: ai
+}
+
+needs_tool: "Needs a tool?" {
+  class: decision
+}
+
+##############################################################################
+# TOOL EXECUTION LOOP
+##############################################################################
+
+tool_loop: Tool Execution Loop {
+  style.fill: "#faf5ff"
+  style.stroke: "#a855f7"
+  style.border-radius: 10
+
+  dispatch: "n8n dispatches\ntool call" {
+    class: step
+  }
+
+  tools: Available Tools {
+    style.fill: "#f3e8ff"
+    style.stroke: "#c084fc"
+    style.border-radius: 8
+
+    t1: "get_netdata_metrics\nCPU · RAM · uptime" { class: tool }
+    t2: "get_ups_status\nbattery · load · runtime" { class: tool }
+    t3: "query_prometheus\ntime-series metrics" { class: tool }
+    t4: "query_loki\nlog search + tail" { class: tool }
+    t5: "get_traffic_stats\nntopng interfaces" { class: tool }
+    t6: "query_netbox\nIP / device lookup" { class: tool }
+    t7: "run_ssh_command\nremote execution" { class: tool }
+    t8: "get_disk_usage\nstorage check" { class: tool }
+  }
+
+  result: "Tool returns result\nto agent context" {
+    class: step
+  }
+}
+
+more_tools: "More tool calls\nneeded?" {
+  class: decision
+}
+
+##############################################################################
+# RESPONSE PATH
+##############################################################################
+
+format: "Claude composes\nfinal answer\nfrom tool results" {
+  class: ai
+}
+
+n8n_respond: "n8n sends response\nback to Discord bot\nHTTP response body" {
+  class: step
+}
+
+d_post: "Discord bot posts\nNOLA's reply\nto #nola channel" {
+  class: output
+}
+
+##############################################################################
+# VOICE PATH (parallel — VAPI)
+##############################################################################
+
+voice_path: Voice Path (VAPI) {
+  style.fill: "#fff7ed"
+  style.stroke: "#ea580c"
+  style.border-radius: 10
+
+  call_in: "Inbound VAPI call\nor critical alert\ntriggers outbound" { class: external }
+  vapi_agent: "VAPI assistant\nElevenLabs voice\n(NOLA character)" { class: external }
+  vapi_tool: "VAPI tool call\nPOST /webhook/nola-vapi-tool\nsame tool set" { class: step }
+  speak: "NOLA speaks answer\nover phone" { class: output }
+}
+
+##############################################################################
+# CONNECTIONS — MAIN FLOW
+##############################################################################
+
+d_msg -> d_bot: "message event"
+d_bot -> d_webhook: "HTTP POST"
+d_webhook -> n8n_trigger: "triggers"
+n8n_trigger -> agent: "payload passed"
+agent -> claude: "system prompt +\nuser message +\ntool definitions"
+claude -> needs_tool
+
+needs_tool -> tool_loop.dispatch: "yes"
+needs_tool -> format: "no — has answer"
+
+tool_loop.dispatch -> tool_loop.tools.t1
+tool_loop.dispatch -> tool_loop.tools.t2
+tool_loop.dispatch -> tool_loop.tools.t3
+tool_loop.dispatch -> tool_loop.tools.t4
+tool_loop.dispatch -> tool_loop.tools.t5
+tool_loop.dispatch -> tool_loop.tools.t6
+tool_loop.dispatch -> tool_loop.tools.t7
+tool_loop.dispatch -> tool_loop.tools.t8
+
+tool_loop.tools.t1 -> tool_loop.result
+tool_loop.tools.t2 -> tool_loop.result
+tool_loop.tools.t3 -> tool_loop.result
+tool_loop.tools.t4 -> tool_loop.result
+tool_loop.tools.t5 -> tool_loop.result
+tool_loop.tools.t6 -> tool_loop.result
+tool_loop.tools.t7 -> tool_loop.result
+tool_loop.tools.t8 -> tool_loop.result
+
+tool_loop.result -> more_tools
+more_tools -> claude: "yes — next\nreasoning pass"
+more_tools -> format: "no — done"
+
+format -> n8n_respond
+n8n_respond -> d_post
+
+# Voice path
+voice_path.call_in -> voice_path.vapi_agent
+voice_path.vapi_agent -> voice_path.vapi_tool: "needs data"
+voice_path.vapi_tool -> agent: "same agent\ndifferent trigger"
+voice_path.vapi_agent -> voice_path.speak
