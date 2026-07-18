@@ -11,6 +11,8 @@ function abortSignal(ms) {
 export function useNetdata() {
   const { settings } = useSettings();
   const [hosts, setHosts]             = useState([]);
+  const [ups, setUps]                 = useState([]);
+  const [alerts, setAlerts]           = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -43,6 +45,8 @@ export function useNetdata() {
         netOut: null,
       }));
       setHosts(mapped);
+      setUps(Array.isArray(data.ups) ? data.ups : []);
+      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
       setLastUpdated(new Date());
     } catch (e) {
       setError(e.message);
@@ -57,5 +61,5 @@ export function useNetdata() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  return { hosts, loading, error, lastUpdated, refresh };
+  return { hosts, ups, alerts, loading, error, lastUpdated, refresh };
 }

@@ -11,7 +11,7 @@ import { MetricBar } from '../components/MiniChart';
 import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
-  const { hosts, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
+  const { hosts, ups, alerts, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
   const { interfaces, loading: ntLoading, lastUpdated: ntUpdated, refresh: ntRefresh } = useTraffic();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -40,6 +40,24 @@ export default function NetworkScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7b7bff" />}
       >
 
+        {/* ── Alerts (Grafana) ── */}
+        <SectionHeader
+          title="Alerts"
+          icon="notifications-outline"
+          updated={fmt(ndUpdated)}
+          loading={ndLoading && alerts.length === 0}
+        />
+        {alerts.length === 0 ? (
+          !ndLoading ? (
+            <View style={styles.allClear}>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#00d26a" />
+              <Text style={styles.allClearText}>No active alerts</Text>
+            </View>
+          ) : null
+        ) : (
+          alerts.map((a, i) => <AlertCard key={`${a.name}/${a.instance}/${i}`} alert={a} />)
+        )}
+
         {/* ── Hosts (Prometheus) ── */}
         <SectionHeader
           title="Hosts"
@@ -51,6 +69,19 @@ export default function NetworkScreen() {
           <EmptyCard text="No host data — check Dashboard URL in Settings" />
         ) : (
           hosts.map(host => <HostCard key={host.name} host={host} />)
+        )}
+
+        {/* ── Power / UPS (Prometheus) ── */}
+        <SectionHeader
+          title="Power"
+          icon="battery-charging-outline"
+          updated={fmt(ndUpdated)}
+          loading={ndLoading && ups.length === 0}
+        />
+        {ups.length === 0 ? (
+          !ndLoading ? <EmptyCard text="No UPS data — apcupsd exporter may be unavailable" /> : null
+        ) : (
+          ups.map((u, i) => <UpsCard key={u.name || i} ups={u} />)
         )}
 
         {/* ── WAN Traffic (InfluxDB) ── */}
@@ -194,6 +225,79 @@ function InterfaceCard({ iface }) {
   );
 }
 
+// Relative "firing for" label, mirrors the web dashboard's firingAgo()
+function firingAgo(isoStr) {
+  if (!isoStr) return '';
+  const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (isNaN(secs) || secs < 0) return '';
+  if (secs < 60)    return `${secs}s`;
+  if (secs < 3600)  return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+  return `${Math.floor(secs / 86400)}d`;
+}
+
+const SEV_COLOR = { critical: '#ff4757', warning: '#ffa502', info: '#7b7bff' };
+
+function AlertCard({ alert }) {
+  const color = SEV_COLOR[alert.severity] || '#ffa502';
+  const ago = firingAgo(alert.firing_since);
+  return (
+    <View style={[styles.alertCard, { borderLeftColor: color }]}>
+      <View style={styles.alertTop}>
+        <Text style={[styles.alertSev, { color }]}>{(alert.severity || 'warning').toUpperCase()}</Text>
+        <Text style={styles.alertName} numberOfLines={1}>{alert.name}</Text>
+      </View>
+      {alert.instance ? <Text style={styles.alertInstance}>{alert.instance}</Text> : null}
+      {alert.summary ? <Text style={styles.alertSummary} numberOfLines={2}>{alert.summary}</Text> : null}
+      {ago ? <Text style={styles.alertTime}>firing for {ago}</Text> : null}
+    </View>
+  );
+}
+
+function UpsCard({ ups }) {
+  const online = ups.status === 'ONLINE';
+  const onBatt = ups.status === 'ONBATT';
+  const statusColor = online ? '#00d26a' : onBatt ? '#ff4757' : '#ffa502';
+  const charge = ups.charge_pct ?? 0;
+  const chargeColor = charge < 20 ? '#ff4757' : charge < 50 ? '#ffa502' : '#00d26a';
+  const runtime = ups.time_left_m != null
+    ? (ups.time_left_m >= 60 ? `${Math.floor(ups.time_left_m / 60)}h ${ups.time_left_m % 60}m` : `${ups.time_left_m}m`)
+    : '—';
+
+  return (
+    <View style={[styles.upsCard, { borderLeftColor: statusColor }]}>
+      <View style={styles.upsHeader}>
+        <View style={[styles.upsDot, { backgroundColor: statusColor }]} />
+        <Text style={styles.upsName} numberOfLines={1}>{ups.name}{ups.model ? ` · ${ups.model}` : ''}</Text>
+        <Text style={[styles.upsStatus, { color: statusColor }]}>{ups.status || 'UNKNOWN'}</Text>
+      </View>
+
+      <View style={styles.upsChargeRow}>
+        <Text style={styles.upsChargeLabel}>Battery</Text>
+        <View style={styles.upsBarBg}>
+          <View style={[styles.upsBarFill, { width: `${Math.min(charge, 100)}%`, backgroundColor: chargeColor }]} />
+        </View>
+        <Text style={[styles.upsChargeVal, { color: chargeColor }]}>{ups.charge_pct ?? '—'}%</Text>
+      </View>
+
+      <View style={styles.upsStats}>
+        <UpsStat label="Runtime" value={runtime} />
+        <UpsStat label="Load" value={ups.load_pct != null ? `${ups.load_pct}%` : '—'} />
+        <UpsStat label="Line" value={ups.line_volts != null ? `${ups.line_volts}V` : '—'} />
+      </View>
+    </View>
+  );
+}
+
+function UpsStat({ label, value }) {
+  return (
+    <View style={styles.upsStat}>
+      <Text style={styles.upsStatVal}>{value}</Text>
+      <Text style={styles.upsStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function EmptyCard({ text }) {
   return (
     <View style={styles.emptyCard}>
@@ -265,4 +369,40 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#1a1a2e',
   },
   emptyText: { color: '#444', fontSize: 13, textAlign: 'center' },
+
+  allClear: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#0f1e14', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#153021',
+  },
+  allClearText: { color: '#00d26a', fontSize: 13 },
+
+  alertCard: {
+    backgroundColor: '#12122a', borderRadius: 12, padding: 12, gap: 3,
+    borderLeftWidth: 3,
+  },
+  alertTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  alertSev: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  alertName: { flex: 1, color: '#e0e0e0', fontSize: 14, fontWeight: '600' },
+  alertInstance: { color: '#888', fontSize: 12 },
+  alertSummary: { color: '#aaa', fontSize: 12 },
+  alertTime: { color: '#555', fontSize: 11, marginTop: 2 },
+
+  upsCard: {
+    backgroundColor: '#12122a', borderRadius: 12, padding: 14, gap: 10,
+    borderLeftWidth: 3,
+  },
+  upsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  upsDot: { width: 8, height: 8, borderRadius: 4 },
+  upsName: { flex: 1, color: '#e0e0e0', fontSize: 14, fontWeight: '600' },
+  upsStatus: { fontSize: 11, fontWeight: '700' },
+  upsChargeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  upsChargeLabel: { color: '#888', fontSize: 11, width: 48 },
+  upsBarBg: { flex: 1, height: 5, backgroundColor: '#2a2a3e', borderRadius: 3, overflow: 'hidden' },
+  upsBarFill: { height: '100%', borderRadius: 3 },
+  upsChargeVal: { fontSize: 12, fontWeight: '600', width: 42, textAlign: 'right' },
+  upsStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  upsStat: { alignItems: 'center', flex: 1 },
+  upsStatVal: { color: '#cfcfe0', fontSize: 14, fontWeight: '700' },
+  upsStatLabel: { color: '#666', fontSize: 10, marginTop: 2 },
 });
