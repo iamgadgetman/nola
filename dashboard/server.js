@@ -31,6 +31,15 @@ const FW_HOSTS    = (process.env.FW_HOSTS    || 'fort-opnsense,hawk-opnsense').s
 const FW_DISPLAY  = { 'fort-opnsense': 'fort', 'hawk-opnsense': 'hawk' };
 const PVE_HOSTS   = (process.env.PVE_HOSTS   || 'pve').split(',').map(h => h.trim());
 
+// Optional friendly names for MariaDB/MySQL exporter targets, so several DBs on
+// holodeck read as names instead of host:port. Format (comma-separated):
+//   "holodeck.fort.example.com:9104=Minecraft DB,holodeck.fort.example.com:9105=Rust DB"
+const DB_NAMES = Object.fromEntries(
+  (process.env.DB_FRIENDLY_NAMES || '').split(',').filter(Boolean)
+    .map(p => p.split('=').map(s => s.trim()))
+    .filter(([k, v]) => k && v)
+);
+
 // ─── Proxmox API Config ──────────────────────────────────────────────────────
 // PVE_API_TOKEN format: "root@pam!tokenid=<secret>"
 const PVE_API_URL   = process.env.PVE_API_URL   || 'https://10.0.3.32:8006';
@@ -470,6 +479,60 @@ async function fetchContainers() {
   return { running: cpu.length, containers, by_host: byHost };
 }
 
+// MariaDB/MySQL performance via mysqld_exporter (job="mysql"). One target per DB;
+// results are keyed by the Prometheus `instance` label so several DBs on holodeck
+// each become a row. See deploy/holodeck-db-monitoring.md for exporter setup.
+async function fetchDatabases() {
+  const [up, uptime, connected, maxConn, running, queries, slow, aborted, bpReads, bpReq] =
+    await Promise.all([
+      promQuery('mysql_up{job="mysql"}'),
+      promQuery('mysql_global_status_uptime{job="mysql"}'),
+      promQuery('mysql_global_status_threads_connected{job="mysql"}'),
+      promQuery('mysql_global_variables_max_connections{job="mysql"}'),
+      promQuery('mysql_global_status_threads_running{job="mysql"}'),
+      promQuery('rate(mysql_global_status_queries{job="mysql"}[5m])'),
+      promQuery('rate(mysql_global_status_slow_queries{job="mysql"}[5m])'),
+      promQuery('rate(mysql_global_status_aborted_connects{job="mysql"}[5m])'),
+      promQuery('rate(mysql_global_status_innodb_buffer_pool_reads{job="mysql"}[5m])'),
+      promQuery('rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m])'),
+    ]);
+
+  if (!up?.length) return null;
+
+  const round1 = v => (v != null && !isNaN(v) ? Math.round(v * 10) / 10 : null);
+  const byInst = (results) => {
+    const m = {};
+    for (const r of (results || [])) m[r.metric.instance] = parseFloat(r.value[1]);
+    return m;
+  };
+  const uptM = byInst(uptime), conM = byInst(connected), maxM = byInst(maxConn),
+        runM = byInst(running), qM = byInst(queries), slowM = byInst(slow),
+        abM = byInst(aborted), bprM = byInst(bpReads), bpqM = byInst(bpReq);
+
+  return up.map(r => {
+    const inst = r.metric.instance;
+    const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
+    const reads = bprM[inst], req = bpqM[inst];
+    // Buffer-pool hit ratio: 1 - disk_reads / logical_read_requests (rate-based)
+    const hitPct = (req != null && req > 0) ? round1((1 - reads / req) * 100) : null;
+    const conn = conM[inst], max = maxM[inst];
+    return {
+      name,
+      instance:        inst,
+      up:              r.value[1] === '1',
+      uptime:          fmtUptime(uptM[inst]),
+      connections:     conn != null ? Math.round(conn) : null,
+      max_conn:        max  != null ? Math.round(max)  : null,
+      conn_pct:        (conn != null && max) ? round1((conn / max) * 100) : null,
+      threads_running: runM[inst] != null ? Math.round(runM[inst]) : null,
+      qps:             round1(qM[inst]),
+      slow_qps:        round1(slowM[inst]),
+      aborted_qps:     round1(abM[inst]),
+      buffer_hit_pct:  hitPct,
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ─── Proxmox API ────────────────────────────────────────────────────────────
 // Proxmox uses a self-signed cert — https.request with rejectUnauthorized:false
 function pveGet(apiPath) {
@@ -609,13 +672,14 @@ async function fetchProxmox() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
     fetchProxmox(),
     fetchUps(),
     fetchContainers(),
+    fetchDatabases(),
   ]);
 
   const prom   = promResult.status   === 'fulfilled' ? promResult.value   : null;
@@ -624,6 +688,7 @@ app.get('/api/data', async (req, res) => {
   const pve    = pveResult.status    === 'fulfilled' ? pveResult.value    : null;
   const ups    = upsResult.status    === 'fulfilled' ? upsResult.value    : null;
   const ctr    = ctrResult.status    === 'fulfilled' ? ctrResult.value    : null;
+  const dbs    = dbResult.status     === 'fulfilled' ? dbResult.value     : null;
 
   res.json({
     timestamp: new Date().toISOString(),
@@ -635,6 +700,7 @@ app.get('/api/data', async (req, res) => {
     pve,
     ups,
     containers: ctr,
+    databases: dbs,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
       alerts:      alertsResult.status === 'rejected' ? 'fetch failed' : null,
@@ -642,6 +708,7 @@ app.get('/api/data', async (req, res) => {
       pve:         pve    ? null : 'unavailable',
       ups:         ups    ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
+      databases:   dbs    ? null : 'unavailable',
     },
   });
 });
