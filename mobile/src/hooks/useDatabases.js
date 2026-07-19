@@ -8,14 +8,13 @@ function abortSignal(ms) {
   return ctrl.signal;
 }
 
-export function useNetdata() {
+const REFRESH_INTERVAL = 10000;
+
+// Consumes the `databases` block from /api/data (server.js → fetchDatabases,
+// sourced from mysqld_exporter / job="mysql" in Prometheus). One entry per DB.
+export function useDatabases() {
   const { settings } = useSettings();
-  const [hosts, setHosts]             = useState([]);
-  const [ups, setUps]                 = useState([]);
-  const [alerts, setAlerts]           = useState([]);
-  const [speedtests, setSpeedtests]   = useState([]);
-  const [crowdsec, setCrowdsec]       = useState(null);
-  const [pve, setPve]                 = useState(null);
+  const [databases, setDatabases]     = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -36,23 +35,10 @@ export function useNetdata() {
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       const data = await safeJson(res);
-      const mapped = (data.hosts || []).map(h => ({
-        name:   h.name,
-        type:   h.type,
-        ok:     h.up,
-        cpu:    h.cpu_pct,
-        ram:    h.ram_pct,
-        disk:   h.disk_pct,
-        uptime: h.uptime || null,
-        netIn:  null,
-        netOut: null,
-      }));
-      setHosts(mapped);
-      setUps(Array.isArray(data.ups) ? data.ups : []);
-      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
-      setSpeedtests(Array.isArray(data.speedtests) ? data.speedtests : []);
-      setCrowdsec(data.crowdsec || null);
-      setPve(data.pve || null);
+      const dbs = data.databases || null;
+      setDatabases(Array.isArray(dbs) ? dbs : []);
+      // Surface a DB-specific fetch note even when the rest of /api/data succeeds
+      setError(dbs ? null : (data.errors?.databases || null));
       setLastUpdated(new Date());
     } catch (e) {
       setError(e.message);
@@ -63,9 +49,9 @@ export function useNetdata() {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 30000);
+    const t = setInterval(refresh, REFRESH_INTERVAL);
     return () => clearInterval(t);
   }, [refresh]);
 
-  return { hosts, ups, alerts, speedtests, crowdsec, pve, loading, error, lastUpdated, refresh };
+  return { databases, loading, error, lastUpdated, refresh };
 }

@@ -1,0 +1,19 @@
+# Inventory of MariaDB/MySQL servers for NOLA to monitor. One line per server.
+# generate.sh turns each line into a mysqld_exporter service + a Prometheus target.
+#
+# Format:   Friendly Name | mysql_address:port | exporter_port
+#
+#   Friendly Name  shown in the app (becomes the Prometheus `server` label)
+#   mysql_address  reachable FROM the exporter container:
+#                    - DB published on the holodeck host -> host.docker.internal:<port>
+#                    - DB container on a shared docker network -> its container name
+#                    - or a LAN IP
+#   exporter_port  a unique host port for this exporter (9104, 9105, 9106, ...)
+#
+# If all your databases live inside ONE MariaDB server, use a SINGLE line — one
+# exporter reports every schema on that server.
+#
+# Edit / delete the examples below:
+
+Minecraft DB | host.docker.internal:3306 | 9104
+Rust DB      | host.docker.internal:3307 | 9105
