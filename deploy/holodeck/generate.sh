@@ -11,6 +11,9 @@ TARGETS="prometheus/mysql-targets.generated.json"
 HOLO_HOST="${HOLODECK_HOST:-holodeck.fort.galaxy.rip}"
 EXPORTER_IMAGE="${MYSQLD_EXPORTER_IMAGE:-prom/mysqld-exporter:v0.15.1}"
 CADVISOR_IMAGE="${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.49.1}"
+# cAdvisor host port. NOT 8080 — that's AMP's panel port on holodeck. Override
+# with CADVISOR_PORT=... if 8081 is also taken. Must match the Prometheus target.
+CADVISOR_PORT="${CADVISOR_PORT:-8081}"
 
 [ -f "$LIST" ] || { echo "error: $LIST not found" >&2; exit 1; }
 mkdir -p prometheus
@@ -27,7 +30,7 @@ services:
     restart: unless-stopped
     privileged: true
     ports:
-      - "8080:8080"
+      - "${CADVISOR_PORT}:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -88,7 +91,8 @@ echo "Generated $COMPOSE (cAdvisor + $count exporter(s)) and $TARGETS"
 echo
 echo "Next:"
 echo "  1. On holodeck:      docker compose -f $COMPOSE up -d"
-echo "  2. On Prometheus:    copy $TARGETS -> /etc/prometheus/holodeck/mysql-targets.json"
+echo "  2. On Prometheus:    add cAdvisor target ${HOLO_HOST}:${CADVISOR_PORT} to the cadvisor job"
+echo "                       copy $TARGETS -> /etc/prometheus/holodeck/mysql-targets.json"
 echo "                       add prometheus/mysql-job.yml to scrape_configs, then reload"
 echo
 echo "The 'server' label already names each DB in the app. If you'd rather map"
