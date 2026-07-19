@@ -75,6 +75,7 @@ function renderDashboard(d) {
   renderSpeedtests(d.speedtests);
   renderCrowdsec(d.crowdsec);
   renderUps(d.ups);
+  renderNetdata(d.netdata);
   renderAlerts(d.alerts);
   renderProxmox(d.pve);
   renderContainers(d.containers);
@@ -172,14 +173,20 @@ function renderUps(upsList) {
     return;
   }
 
-  const u = upsList[0];
-  const online = u.status === 'ONLINE';
-  const onBatt = u.status === 'ONBATT';
-  badge.textContent = u.status;
-  badge.className = 'nola-card__badge ups-status-badge ' + (online ? 'ok' : onBatt ? 'warn' : '');
+  const statusCls = s =>
+    s === 'ONLINE' ? 'ok' : s === 'ONBATT' ? 'warn' : 'crit'; // COMMLOST/UNKNOWN -> crit
 
-  const chargePct = u.charge_pct ?? 0;
-  const chargeCls = chargePct < 20 ? 'crit' : chargePct < 50 ? 'warn' : 'ok';
+  // Card badge summarises all units: green when every UPS is ONLINE,
+  // otherwise flags how many need attention.
+  const bad = upsList.filter(u => u.status !== 'ONLINE');
+  if (!bad.length) {
+    badge.textContent = upsList.length > 1 ? `${upsList.length} OK` : 'ONLINE';
+    badge.className = 'nola-card__badge ups-status-badge ok';
+  } else {
+    badge.textContent = `${bad.length} ⚠`;
+    badge.className = 'nola-card__badge ups-status-badge ' +
+      (bad.some(u => u.status === 'ONBATT') ? 'warn' : 'crit');
+  }
 
   const fmtRuntime = m => {
     if (m == null) return '—';
@@ -187,30 +194,85 @@ function renderUps(upsList) {
     return `${m}m`;
   };
 
-  body.innerHTML = `
-    <div class="ups-charge-row">
-      <span class="ups-charge-label">Battery</span>
-      <div class="ups-bar-wrap">
-        <div class="ups-bar-fill ${chargeCls}" style="width:${chargePct}%"></div>
+  body.innerHTML = upsList.map(u => {
+    const chargePct = u.charge_pct ?? 0;
+    const chargeCls = chargePct < 20 ? 'crit' : chargePct < 50 ? 'warn' : 'ok';
+    return `
+    <div class="ups-unit">
+      <div class="ups-unit-head">
+        <span class="ups-unit-name">${escHtml(u.name)}</span>
+        <span class="ups-unit-status ${statusCls(u.status)}">${escHtml(u.status)}</span>
       </div>
-      <span class="ups-charge-val ${chargeCls}">${u.charge_pct ?? '—'}%</span>
-    </div>
-    <div class="ups-stats-row">
-      <div class="ups-stat">
-        <span class="ups-stat-label">Runtime</span>
-        <span class="ups-stat-val">${fmtRuntime(u.time_left_m)}</span>
+      <div class="ups-charge-row">
+        <span class="ups-charge-label">Battery</span>
+        <div class="ups-bar-wrap">
+          <div class="ups-bar-fill ${chargeCls}" style="width:${chargePct}%"></div>
+        </div>
+        <span class="ups-charge-val ${chargeCls}">${u.charge_pct ?? '—'}%</span>
       </div>
-      <div class="ups-stat">
-        <span class="ups-stat-label">Load</span>
-        <span class="ups-stat-val">${u.load_pct ?? '—'}%</span>
+      <div class="ups-stats-row">
+        <div class="ups-stat">
+          <span class="ups-stat-label">Runtime</span>
+          <span class="ups-stat-val">${fmtRuntime(u.time_left_m)}</span>
+        </div>
+        <div class="ups-stat">
+          <span class="ups-stat-label">Load</span>
+          <span class="ups-stat-val">${u.load_pct ?? '—'}%</span>
+        </div>
+        <div class="ups-stat">
+          <span class="ups-stat-label">Line</span>
+          <span class="ups-stat-val">${u.line_volts ?? '—'}V</span>
+        </div>
       </div>
-      <div class="ups-stat">
-        <span class="ups-stat-label">Line</span>
-        <span class="ups-stat-val">${u.line_volts ?? '—'}V</span>
-      </div>
-    </div>
-    ${u.model ? `<div class="ups-model">${escHtml(u.model)}</div>` : ''}
-  `;
+      ${u.model ? `<div class="ups-model">${escHtml(u.model)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderNetdata(list) {
+  const body  = document.getElementById('netdata-body');
+  const badge = document.getElementById('netdata-badge');
+  if (!body) return;
+  if (!list?.length) {
+    body.innerHTML = '<div class="ups-no-data">No netdata data</div>';
+    if (badge) { badge.textContent = '—'; badge.className = 'nola-card__badge'; }
+    return;
+  }
+
+  const maxAnom = Math.max(...list.map(f => f.anomaly_pct ?? 0));
+  if (badge) {
+    if (maxAnom >= 5)      { badge.textContent = 'anomaly'; badge.className = 'nola-card__badge crit'; }
+    else if (maxAnom >= 1) { badge.textContent = 'watch';   badge.className = 'nola-card__badge warn'; }
+    else                   { badge.textContent = `${list.length} up`; badge.className = 'nola-card__badge'; }
+  }
+
+  const fmtBw = k => k >= 1000 ? `${(k / 1000).toFixed(1)} Mb/s` : `${Math.round(k)} kb/s`;
+
+  body.innerHTML = list.map(f => {
+    const anomVal = f.anomaly_pct ?? 0;
+    const anomCls = anomVal >= 5 ? 'crit' : anomVal >= 1 ? 'warn' : 'ok';
+    const anomTxt = f.anomaly_pct != null ? f.anomaly_pct.toFixed(2) : '—';
+    const tempCls = f.disk_temp_c == null ? '' : f.disk_temp_c >= 65 ? 'crit' : f.disk_temp_c >= 55 ? 'warn' : 'ok';
+    const ifaces = f.interfaces?.length
+      ? f.interfaces.map(i => `
+          <div class="nd-iface">
+            <span class="nd-iface-dev">${escHtml(i.dev)}</span>
+            <span class="nd-iface-bw"><span class="nd-dn">↓ ${fmtBw(i.rx_kbps)}</span><span class="nd-up">↑ ${fmtBw(i.tx_kbps)}</span></span>
+          </div>`).join('')
+      : '<div class="nd-iface-idle">no active interfaces</div>';
+    return `
+      <div class="nd-unit">
+        <div class="nd-head">
+          <span class="nd-name">${escHtml(f.name)}</span>
+          <span class="nd-anom ${anomCls}">anomaly ${anomTxt}%</span>
+        </div>
+        <div class="nd-stats">
+          <div class="nd-stat"><span class="nd-stat-label">Load</span><span class="nd-stat-val">${f.load1 ?? '—'}</span></div>
+          <div class="nd-stat"><span class="nd-stat-label">Disk °C</span><span class="nd-stat-val ${tempCls}">${f.disk_temp_c ?? '—'}</span></div>
+        </div>
+        <div class="nd-ifaces">${ifaces}</div>
+      </div>`;
+  }).join('');
 }
 
 function renderAlerts(alerts) {
