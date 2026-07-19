@@ -18,6 +18,12 @@ database backend + UI (Parts 2–3 below) are **already built and committed**. A
 that remains on the holodeck side is deploying the exporters (Parts 0 and 1) —
 the app lights up automatically once Prometheus is scraping them.
 
+> **Ready-to-run bundle:** [`deploy/holodeck/`](holodeck/) packages Parts 0–1 as
+> drop-in files — a `generate.sh` that emits the holodeck compose (cAdvisor + one
+> mysqld_exporter per DB) and Prometheus targets from a simple `databases.list`,
+> plus the monitoring-user SQL and scrape-job snippets. Start there; the sections
+> below are the underlying theory/reference.
+
 ---
 
 ## Part 0 — cAdvisor on holodeck (prerequisite for the container view)
