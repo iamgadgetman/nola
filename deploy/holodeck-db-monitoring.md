@@ -44,6 +44,10 @@ curl -sG 'http://10.0.5.42:9090/api/v1/query' \
 
 If holodeck isn't listed, add cAdvisor on holodeck:
 
+> ⚠️ **Port conflict:** AMP's web panel owns **8080** on holodeck, so cAdvisor
+> must use a different host port — **8081** below. Binding cAdvisor to 8080 there
+> either fails to start (port in use) or makes Prometheus scrape AMP's HTML.
+
 **2. Run cAdvisor** (`/opt/monitoring/docker-compose.yml` on holodeck):
 
 ```yaml
@@ -54,7 +58,7 @@ services:
     restart: unless-stopped
     privileged: true
     ports:
-      - "8080:8080"          # or bind to the lab-facing IP only
+      - "8081:8080"          # host 8081 (NOT 8080 — AMP owns it on holodeck)
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -72,7 +76,7 @@ the existing `job="cadvisor"` so no server.js change is needed:
   - job_name: cadvisor
     static_configs:
       - targets:
-          - holodeck.fort.example.com:8080   # add holodeck to the existing list
+          - holodeck.fort.example.com:8081   # add holodeck (8081, not 8080)
 ```
 
 `docker compose up -d cadvisor` on holodeck, then reload Prometheus
@@ -80,8 +84,8 @@ the existing `job="cadvisor"` so no server.js change is needed:
 Containers** section on the Game Servers tab should populate within ~15s.
 
 > Note on the host label: `by_host` is keyed on Prometheus's `instance` label.
-> `ContainerSection` matches it by substring `holodeck`, so `holodeck:8080`,
-> `holodeck.fort.example.com:8080`, or an FQDN all work. If you scrape it by raw
+> `ContainerSection` matches it by substring `holodeck`, so `holodeck:8081`,
+> `holodeck.fort.example.com:8081`, or an FQDN all work. If you scrape it by raw
 > IP, either give the target a hostname or change `hostMatch` in
 > `mobile/src/screens/AMPScreen.js`.
 
