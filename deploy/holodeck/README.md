@@ -64,6 +64,24 @@ curl -X POST http://10.0.5.42:9090/-/reload
 **Containers** — add holodeck to the existing cAdvisor job:
 see [prometheus/cadvisor-target.md](prometheus/cadvisor-target.md).
 
+## 3b. (Optional) Grafana alert rules
+
+Provision four Grafana-managed alerts for the DBs — down, connection saturation,
+low buffer-pool hit ratio, and slow queries. Being Grafana-managed, they show up
+in Grafana **and** in the app's Alerts tab (Network) when firing.
+
+```bash
+cd grafana
+./gen-alerts.sh                 # auto-finds the Prometheus datasource UID via the
+                                # dashboard .env, or: ./gen-alerts.sh <uid>
+cp alerting/nola-mysql-alerts.generated.yaml \
+   /etc/grafana/provisioning/alerting/nola-mysql-alerts.yaml   # on the Grafana host
+systemctl restart grafana-server
+```
+
+Requires Grafana 9+. Rules land in a `NOLA` folder and fire once per DB, carrying
+that DB's `server`/`instance` labels. See [grafana/](grafana/).
+
 ## 4. Verify
 
 ```bash
@@ -95,4 +113,6 @@ docker-compose.generated.yml        (generated) runs on holodeck
 prometheus/mysql-job.yml            scrape job snippet for prometheus.yml
 prometheus/mysql-targets.generated.json  (generated) -> Prometheus host
 prometheus/cadvisor-target.md       how to add holodeck to the cadvisor job
+grafana/gen-alerts.sh               fills the datasource UID into the alert rules
+grafana/alerting/nola-mysql-alerts.yaml  alert-rule template (4 rules)
 ```

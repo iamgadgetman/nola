@@ -1,0 +1,146 @@
+# Grafana-managed alert rules for the holodeck MariaDB/MySQL exporters.
+# TEMPLATE — do not provision directly; the datasourceUid fields are placeholders.
+# Run ../gen-alerts.sh to write nola-mysql-alerts.generated.yaml with your
+# Prometheus datasource UID filled in, then copy that to Grafana:
+#   /etc/grafana/provisioning/alerting/nola-mysql-alerts.yaml
+#
+# These are Grafana-managed rules, so when firing they appear both in Grafana AND
+# in the NOLA app's Alerts section (which reads Grafana's alertmanager API).
+# Requires Grafana 9+ (uses the `threshold` expression type). Instant queries mean
+# no separate reduce node is needed. Each rule is multi-dimensional: it fires once
+# per DB, carrying that DB's `server` and `instance` labels through to the app.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: NOLA MariaDB
+    folder: NOLA
+    interval: 1m
+    rules:
+      # ── DB down ────────────────────────────────────────────────────────────
+      - uid: nola-mysql-down
+        title: MariaDB Down
+        condition: C
+        for: 1m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.server }} MariaDB ({{ $labels.instance }}) is down"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: PROMETHEUS_DS_UID
+            model:
+              refId: A
+              editorMode: code
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: mysql_up{job="mysql"}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      # ── Connection saturation ──────────────────────────────────────────────
+      - uid: nola-mysql-high-connections
+        title: MariaDB High Connection Usage
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server }} is using over 90% of max_connections"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: PROMETHEUS_DS_UID
+            model:
+              refId: A
+              editorMode: code
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: mysql_global_status_threads_connected{job="mysql"} / mysql_global_variables_max_connections{job="mysql"} * 100
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [90] }
+
+      # ── Low InnoDB buffer-pool hit ratio (only for DBs with real traffic) ───
+      - uid: nola-mysql-low-buffer-hit
+        title: MariaDB Low Buffer Pool Hit Ratio
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server }} InnoDB buffer-pool hit ratio below 95% — undersized buffer pool or cold cache"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PROMETHEUS_DS_UID
+            model:
+              refId: A
+              editorMode: code
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: >-
+                (1 - rate(mysql_global_status_innodb_buffer_pool_reads{job="mysql"}[5m])
+                / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m]), 1)) * 100
+                and rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m]) > 50
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [95] }
+
+      # ── Slow queries ───────────────────────────────────────────────────────
+      - uid: nola-mysql-slow-queries
+        title: MariaDB Slow Queries
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.server }} is logging slow queries (> 1/s)"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PROMETHEUS_DS_UID
+            model:
+              refId: A
+              editorMode: code
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: rate(mysql_global_status_slow_queries{job="mysql"}[5m])
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
