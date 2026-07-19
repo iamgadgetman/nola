@@ -3,10 +3,18 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl } fr
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAMP } from '../hooks/useAMP';
+import { useContainers } from '../hooks/useContainers';
+import { useDatabases } from '../hooks/useDatabases';
 import ServerCard from '../components/ServerCard';
+import ContainerSection from '../components/ContainerSection';
+import DatabaseSection from '../components/DatabaseSection';
 
 export default function AMPScreen() {
   const { instances, loading, error, lastUpdated, refresh, actionLoading, startInstance, stopInstance, restartInstance } = useAMP();
+  const containers = useContainers();
+  const databases = useDatabases();
+
+  const refreshAll = () => { refresh(); containers.refresh(); databases.refresh(); };
 
   const running = instances.filter(i => i.Running).length;
   const stopped = instances.length - running;
@@ -18,7 +26,7 @@ export default function AMPScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>Game Servers</Text>
-        <TouchableOpacity onPress={refresh} style={styles.refreshBtn}>
+        <TouchableOpacity onPress={refreshAll} style={styles.refreshBtn}>
           <Ionicons name="refresh" size={20} color="#7b7bff" />
         </TouchableOpacity>
       </View>
@@ -51,7 +59,7 @@ export default function AMPScreen() {
           />
         )}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#7b7bff" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor="#7b7bff" />}
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
@@ -59,6 +67,21 @@ export default function AMPScreen() {
               <Text style={styles.emptyText}>No instances found</Text>
             </View>
           ) : null
+        }
+        ListFooterComponent={
+          <>
+            <ContainerSection
+              byHost={containers.byHost}
+              running={containers.running}
+              loading={containers.loading}
+              error={containers.error}
+            />
+            <DatabaseSection
+              databases={databases.databases}
+              loading={databases.loading}
+              error={databases.error}
+            />
+          </>
         }
       />
     </SafeAreaView>

@@ -1,0 +1,8 @@
+# Secrets and per-environment generated artifacts — keep templates, not instances
+.env
+docker-compose.generated.yml
+prometheus/mysql-targets.generated.json
+grafana/alerting/*.generated.yaml
+
+# Re-include the template (root .gitignore excludes .env.* globally)
+!.env.example
