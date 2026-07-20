@@ -7,11 +7,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNetdata } from '../hooks/useNetdata';
 import { useTraffic } from '../hooks/useTraffic';
+import FirewallHealthSection from '../components/FirewallHealthSection';
 import { MetricBar } from '../components/MiniChart';
 import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
-  const { hosts, ups, alerts, speedtests, crowdsec, pve, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
+  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
   const { interfaces, loading: ntLoading, lastUpdated: ntUpdated, refresh: ntRefresh } = useTraffic();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -95,6 +96,14 @@ export default function NetworkScreen() {
         ) : (
           ups.map((u, i) => <UpsCard key={u.name || i} ups={u} />)
         )}
+
+        {/* ── Firewall Health (netdata) ── */}
+        {netdata && netdata.length > 0 ? (
+          <>
+            <SectionHeader title="Firewall Health" icon="flame-outline" updated={fmt(ndUpdated)} />
+            <FirewallHealthSection netdata={netdata} />
+          </>
+        ) : null}
 
         {/* ── Internet Speed (Prometheus) ── */}
         <SectionHeader

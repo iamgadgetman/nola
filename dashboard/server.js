@@ -548,6 +548,57 @@ async function fetchDatabases() {
       slow_qps:        round1(slowM[inst]),
       aborted_qps:     round1(abM[inst]),
       buffer_hit_pct:  hitPct,
+      engine:          'mysql',
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Redis performance via redis_exporter (job="redis"). Shaped to slot into the
+// same databases view as MariaDB/MySQL rows (engine: 'redis'); metrics that don't
+// map to Redis (slow queries, worker threads) are left null.
+async function fetchRedis() {
+  const [up, uptime, clients, maxClients, cmds, hits, misses] = await Promise.all([
+    promQuery('redis_up{job="redis"}'),
+    promQuery('redis_uptime_in_seconds{job="redis"}'),
+    promQuery('redis_connected_clients{job="redis"}'),
+    promQuery('redis_config_maxclients{job="redis"}'),
+    promQuery('rate(redis_commands_processed_total{job="redis"}[5m])'),
+    promQuery('rate(redis_keyspace_hits_total{job="redis"}[5m])'),
+    promQuery('rate(redis_keyspace_misses_total{job="redis"}[5m])'),
+  ]);
+
+  if (!up?.length) return null;
+
+  const round1 = v => (v != null && !isNaN(v) ? Math.round(v * 10) / 10 : null);
+  const byInst = (results) => {
+    const m = {};
+    for (const r of (results || [])) m[r.metric.instance] = parseFloat(r.value[1]);
+    return m;
+  };
+  const uptM = byInst(uptime), cliM = byInst(clients), maxM = byInst(maxClients),
+        cmdM = byInst(cmds), hitM = byInst(hits), missM = byInst(misses);
+
+  return up.map(r => {
+    const inst = r.metric.instance;
+    const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
+    const conn = cliM[inst], max = maxM[inst];
+    const h = hitM[inst], m = missM[inst];
+    // Keyspace hit ratio (rate-based); null when there's no read traffic
+    const hitPct = (h != null && m != null && (h + m) > 0) ? round1((h / (h + m)) * 100) : null;
+    return {
+      name,
+      instance:        inst,
+      up:              r.value[1] === '1',
+      uptime:          fmtUptime(uptM[inst]),
+      connections:     conn != null ? Math.round(conn) : null,
+      max_conn:        max  != null ? Math.round(max)  : null,
+      conn_pct:        (conn != null && max) ? round1((conn / max) * 100) : null,
+      threads_running: null,
+      qps:             round1(cmdM[inst]),
+      slow_qps:        null,
+      aborted_qps:     null,
+      buffer_hit_pct:  hitPct,
+      engine:          'redis',
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -763,7 +814,7 @@ async function fetchProxmox() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
@@ -772,6 +823,7 @@ app.get('/api/data', async (req, res) => {
     fetchContainers(),
     fetchDatabases(),
     fetchNetdata(),
+    fetchRedis(),
   ]);
 
   const prom    = promResult.status    === 'fulfilled' ? promResult.value    : null;
@@ -780,8 +832,14 @@ app.get('/api/data', async (req, res) => {
   const pve     = pveResult.status     === 'fulfilled' ? pveResult.value     : null;
   const ups     = upsResult.status     === 'fulfilled' ? upsResult.value     : null;
   const ctr     = ctrResult.status     === 'fulfilled' ? ctrResult.value     : null;
-  const dbs     = dbResult.status      === 'fulfilled' ? dbResult.value      : null;
+  const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
+  const redisDbs = redisResult.status  === 'fulfilled' ? redisResult.value   : null;
+
+  // MySQL/MariaDB + Redis share one databases view (each row carries `engine`)
+  const databases = (mysqlDbs || redisDbs)
+    ? [...(mysqlDbs || []), ...(redisDbs || [])].sort((a, b) => a.name.localeCompare(b.name))
+    : null;
 
   res.json({
     timestamp: new Date().toISOString(),
@@ -793,7 +851,7 @@ app.get('/api/data', async (req, res) => {
     pve,
     ups,
     containers: ctr,
-    databases: dbs,
+    databases,
     netdata,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
@@ -802,7 +860,7 @@ app.get('/api/data', async (req, res) => {
       pve:         pve    ? null : 'unavailable',
       ups:         ups    ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
-      databases:   dbs    ? null : 'unavailable',
+      databases:   databases ? null : 'unavailable',
       netdata:     netdata ? null : 'unavailable',
     },
   });
