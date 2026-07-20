@@ -19,6 +19,25 @@ const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || 'opnsense';
 // WAN interface name on both OPNsense firewalls (verified: em0 is highest-traffic iface)
 const WAN_INTERFACE  = process.env.WAN_INTERFACE  || 'em0';
 
+// Friendly UPS names, keyed by Prometheus `instance` label (job="ups").
+// halt = Fort firewall UPS, stop = Hawk House firewall UPS.
+const UPS_DISPLAY_NAMES = {
+  'halt-opnsense': 'Fort UPS',
+  'stop-opnsense': 'Hawk UPS',
+};
+
+// Firewall netdata instances (job="netdata", honor_labels -> netdata hostname,
+// e.g. "halt.fort.example.com" / "stop.hawk.example.com"). Anything not matching
+// (e.g. unraid = "everything") is ignored.
+const NETDATA_FW_NAMES = [
+  { match: /halt|fort/i, name: 'Fort Firewall' },
+  { match: /stop|hawk/i, name: 'Hawk Firewall' },
+];
+function netdataFwName(instance) {
+  const m = NETDATA_FW_NAMES.find(x => x.match.test(instance || ''));
+  return m ? m.name : null;
+}
+
 // ─── LLM Config ─────────────────────────────────────────────────────────────
 const OLLAMA_URL    = process.env.OLLAMA_URL    || 'http://10.0.5.45:11434';
 const OLLAMA_MODEL  = process.env.OLLAMA_MODEL  || 'llama3.2:3b';
@@ -587,10 +606,12 @@ async function fetchUps() {
 
   if (!charge?.length) return null;
 
-  const get = (results, labelKey = 'ups') => {
+  // Keyed by the Prometheus `instance` label (one per apcupsd exporter), which
+  // is stable regardless of the apcupsd UPSNAME. Values map to friendly names.
+  const get = (results) => {
     const map = {};
     for (const r of (results || [])) {
-      map[r.metric[labelKey] || r.metric.instance || 'ups'] = parseFloat(r.value[1]);
+      map[r.metric.instance || r.metric.ups || 'ups'] = parseFloat(r.value[1]);
     }
     return map;
   };
@@ -602,25 +623,95 @@ async function fetchUps() {
   const battVoltsMap = get(battVolts);
 
   const upsList = charge.map(r => {
-    const name = r.metric.ups || r.metric.instance || 'ups';
-    const infoR = (info || []).find(i => i.metric.ups === name);
+    const inst   = r.metric.instance || r.metric.ups || 'ups';
+    const name   = UPS_DISPLAY_NAMES[inst] || r.metric.ups || inst;
+    const infoR  = (info || []).find(i => (i.metric.instance || i.metric.ups) === inst);
     const status = infoR?.metric?.status || 'UNKNOWN';
     const model  = infoR?.metric?.model  || '';
-    const pct    = chargeMap[name]    ?? null;
-    const left   = timeLeftMap[name]  ?? null;
+    const pct    = chargeMap[inst]    ?? null;
+    const left   = timeLeftMap[inst]  ?? null;
     return {
       name,
       model,
       status,
       charge_pct:   pct   != null ? Math.round(pct)   : null,
       time_left_m:  left  != null ? Math.round(left / 60) : null,
-      load_pct:     loadMap[name]      != null ? Math.round(loadMap[name])      : null,
-      line_volts:   lineVoltsMap[name] != null ? Math.round(lineVoltsMap[name]) : null,
-      batt_volts:   battVoltsMap[name] != null ? parseFloat(battVoltsMap[name].toFixed(1)) : null,
+      load_pct:     loadMap[inst]      != null ? Math.round(loadMap[inst])      : null,
+      line_volts:   lineVoltsMap[inst] != null ? Math.round(lineVoltsMap[inst]) : null,
+      batt_volts:   battVoltsMap[inst] != null ? parseFloat(battVoltsMap[inst].toFixed(1)) : null,
     };
   });
 
+  // Stable order: Fort first, then Hawk, then anything else alphabetically.
+  const order = { 'Fort UPS': 0, 'Hawk UPS': 1 };
+  upsList.sort((a, b) => (order[a.name] ?? 9) - (order[b.name] ?? 9) || a.name.localeCompare(b.name));
+
   return upsList;
+}
+
+// Netdata-sourced firewall health. Netdata for both firewalls is already
+// scraped into Prometheus (job="netdata"); this surfaces the signal NOLA
+// doesn't get from node_exporter: ML anomaly rate, disk temp, and per-NIC
+// throughput. A firewall only appears while its netdata target is up.
+async function fetchNetdata() {
+  const [anomaly, diskTemp, load1, net] = await Promise.all([
+    promQuery('netdata_anomaly_detection_anomaly_rate_percentage_average'),
+    promQuery('netdata_smartctl_device_temperature_Celsius_average'),
+    promQuery('netdata_system_load_load_average{dimension="load1"}'),
+    promQuery('netdata_net_net_kilobits_persec_average'),
+  ]);
+
+  const fw = {};
+  const ensure = (inst) => {
+    const name = netdataFwName(inst);
+    if (!name) return null;
+    if (!fw[name]) fw[name] = { name, anomaly_pct: null, disk_temp_c: null, load1: null, interfaces: {} };
+    return fw[name];
+  };
+
+  for (const r of (anomaly || [])) {
+    const o = ensure(r.metric.instance); if (!o) continue;
+    const v = parseFloat(r.value[1]);
+    o.anomaly_pct = o.anomaly_pct == null ? v : Math.max(o.anomaly_pct, v);
+  }
+  for (const r of (diskTemp || [])) {
+    const o = ensure(r.metric.instance); if (!o) continue;
+    const v = parseFloat(r.value[1]);
+    o.disk_temp_c = o.disk_temp_c == null ? v : Math.max(o.disk_temp_c, v); // hottest disk
+  }
+  for (const r of (load1 || [])) {
+    const o = ensure(r.metric.instance); if (!o) continue;
+    o.load1 = parseFloat(r.value[1]);
+  }
+  for (const r of (net || [])) {
+    const o = ensure(r.metric.instance); if (!o) continue;
+    const dev = r.metric.device || r.metric.chart || 'iface';
+    const kbps = Math.abs(parseFloat(r.value[1])); // netdata reports "sent" as negative
+    if (!o.interfaces[dev]) o.interfaces[dev] = { dev, rx_kbps: 0, tx_kbps: 0 };
+    if (r.metric.dimension === 'received') o.interfaces[dev].rx_kbps = kbps;
+    else if (r.metric.dimension === 'sent') o.interfaces[dev].tx_kbps = kbps;
+  }
+
+  const list = Object.values(fw).map(o => {
+    const interfaces = Object.values(o.interfaces)
+      .map(i => ({ ...i, total: i.rx_kbps + i.tx_kbps }))
+      .filter(i => i.total >= 1)          // hide idle NICs
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 4)
+      .map(i => ({ dev: i.dev, rx_kbps: Math.round(i.rx_kbps), tx_kbps: Math.round(i.tx_kbps) }));
+    return {
+      name: o.name,
+      anomaly_pct: o.anomaly_pct != null ? parseFloat(o.anomaly_pct.toFixed(2)) : null,
+      disk_temp_c: o.disk_temp_c != null ? Math.round(o.disk_temp_c) : null,
+      load1:       o.load1 != null ? parseFloat(o.load1.toFixed(2)) : null,
+      interfaces,
+    };
+  });
+
+  const order = { 'Fort Firewall': 0, 'Hawk Firewall': 1 };
+  list.sort((a, b) => (order[a.name] ?? 9) - (order[b.name] ?? 9) || a.name.localeCompare(b.name));
+
+  return list.length ? list : null;
 }
 
 async function fetchProxmox() {
@@ -672,7 +763,7 @@ async function fetchProxmox() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
@@ -680,15 +771,17 @@ app.get('/api/data', async (req, res) => {
     fetchUps(),
     fetchContainers(),
     fetchDatabases(),
+    fetchNetdata(),
   ]);
 
-  const prom   = promResult.status   === 'fulfilled' ? promResult.value   : null;
-  const alerts = alertsResult.status === 'fulfilled' ? alertsResult.value : [];
-  const wan    = wanResult.status    === 'fulfilled' ? wanResult.value    : null;
-  const pve    = pveResult.status    === 'fulfilled' ? pveResult.value    : null;
-  const ups    = upsResult.status    === 'fulfilled' ? upsResult.value    : null;
-  const ctr    = ctrResult.status    === 'fulfilled' ? ctrResult.value    : null;
-  const dbs    = dbResult.status     === 'fulfilled' ? dbResult.value     : null;
+  const prom    = promResult.status    === 'fulfilled' ? promResult.value    : null;
+  const alerts  = alertsResult.status  === 'fulfilled' ? alertsResult.value  : [];
+  const wan     = wanResult.status     === 'fulfilled' ? wanResult.value     : null;
+  const pve     = pveResult.status     === 'fulfilled' ? pveResult.value     : null;
+  const ups     = upsResult.status     === 'fulfilled' ? upsResult.value     : null;
+  const ctr     = ctrResult.status     === 'fulfilled' ? ctrResult.value     : null;
+  const dbs     = dbResult.status      === 'fulfilled' ? dbResult.value      : null;
+  const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
 
   res.json({
     timestamp: new Date().toISOString(),
@@ -701,6 +794,7 @@ app.get('/api/data', async (req, res) => {
     ups,
     containers: ctr,
     databases: dbs,
+    netdata,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
       alerts:      alertsResult.status === 'rejected' ? 'fetch failed' : null,
@@ -709,6 +803,7 @@ app.get('/api/data', async (req, res) => {
       ups:         ups    ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
       databases:   dbs    ? null : 'unavailable',
+      netdata:     netdata ? null : 'unavailable',
     },
   });
 });
