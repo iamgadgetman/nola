@@ -26,7 +26,10 @@ function DatabaseCard({ db }) {
           <View style={[styles.dot, { backgroundColor: up ? '#00d26a' : '#ff4757' }]} />
           <Text style={styles.dbName} numberOfLines={1}>{db.name}</Text>
           {db.engine ? (
-            <Text style={[styles.engine, db.engine === 'redis' ? styles.engineRedis : styles.engineMysql]}>
+            <Text style={[styles.engine,
+              db.engine === 'redis' ? styles.engineRedis
+              : db.engine === 'postgres' ? styles.enginePostgres
+              : styles.engineMysql]}>
               {db.engine}
             </Text>
           ) : null}
@@ -119,6 +122,7 @@ const styles = StyleSheet.create({
   },
   engineMysql: { color: '#7b7bff', backgroundColor: '#1a1a3e' },
   engineRedis: { color: '#ff7a45', backgroundColor: '#2e1a12' },
+  enginePostgres: { color: '#5b9bd5', backgroundColor: '#122130' },
   uptime: { color: '#666', fontSize: 11 },
 
   connRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
