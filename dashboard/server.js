@@ -603,6 +603,55 @@ async function fetchRedis() {
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// PostgreSQL performance via postgres_exporter (job="postgres", multi-target).
+// Metrics are per-datname, so several are summed by instance. Shaped to slot into
+// the same databases view with engine: 'postgres'.
+async function fetchPostgres() {
+  const [up, maxc, conns, xact, hit, reads] = await Promise.all([
+    promQuery('pg_up{job="postgres"}'),
+    promQuery('pg_settings_max_connections{job="postgres"}'),
+    promQuery('sum by (instance) (pg_stat_database_numbackends{job="postgres"})'),
+    promQuery('sum by (instance) (rate(pg_stat_database_xact_commit{job="postgres"}[5m]) + rate(pg_stat_database_xact_rollback{job="postgres"}[5m]))'),
+    promQuery('sum by (instance) (rate(pg_stat_database_blks_hit{job="postgres"}[5m]))'),
+    promQuery('sum by (instance) (rate(pg_stat_database_blks_read{job="postgres"}[5m]))'),
+  ]);
+
+  if (!up?.length) return null;
+
+  const round1 = v => (v != null && !isNaN(v) ? Math.round(v * 10) / 10 : null);
+  const byInst = (results) => {
+    const m = {};
+    for (const r of (results || [])) m[r.metric.instance] = parseFloat(r.value[1]);
+    return m;
+  };
+  const maxM = byInst(maxc), conM = byInst(conns), xM = byInst(xact),
+        hM = byInst(hit), rM = byInst(reads);
+
+  return up.map(r => {
+    const inst = r.metric.instance;
+    const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
+    const conn = conM[inst], max = maxM[inst];
+    const h = hM[inst], rd = rM[inst];
+    // Postgres cache-hit ratio: blocks served from shared buffers vs. read from disk
+    const hitPct = (h != null && rd != null && (h + rd) > 0) ? round1((h / (h + rd)) * 100) : null;
+    return {
+      name,
+      instance:        inst,
+      up:              r.value[1] === '1',
+      uptime:          null,   // not exposed via multi-target probe
+      connections:     conn != null ? Math.round(conn) : null,
+      max_conn:        max  != null ? Math.round(max)  : null,
+      conn_pct:        (conn != null && max) ? round1((conn / max) * 100) : null,
+      threads_running: null,
+      qps:             round1(xM[inst]),   // transactions/sec
+      slow_qps:        null,
+      aborted_qps:     null,
+      buffer_hit_pct:  hitPct,
+      engine:          'postgres',
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ─── Proxmox API ────────────────────────────────────────────────────────────
 // Proxmox uses a self-signed cert — https.request with rejectUnauthorized:false
 function pveGet(apiPath) {
@@ -814,7 +863,7 @@ async function fetchProxmox() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult, pgResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
@@ -824,6 +873,7 @@ app.get('/api/data', async (req, res) => {
     fetchDatabases(),
     fetchNetdata(),
     fetchRedis(),
+    fetchPostgres(),
   ]);
 
   const prom    = promResult.status    === 'fulfilled' ? promResult.value    : null;
@@ -835,10 +885,11 @@ app.get('/api/data', async (req, res) => {
   const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
   const redisDbs = redisResult.status  === 'fulfilled' ? redisResult.value   : null;
+  const pgDbs    = pgResult.status     === 'fulfilled' ? pgResult.value      : null;
 
-  // MySQL/MariaDB + Redis share one databases view (each row carries `engine`)
-  const databases = (mysqlDbs || redisDbs)
-    ? [...(mysqlDbs || []), ...(redisDbs || [])].sort((a, b) => a.name.localeCompare(b.name))
+  // MySQL/MariaDB + Redis + PostgreSQL share one databases view (each row carries `engine`)
+  const databases = (mysqlDbs || redisDbs || pgDbs)
+    ? [...(mysqlDbs || []), ...(redisDbs || []), ...(pgDbs || [])].sort((a, b) => a.name.localeCompare(b.name))
     : null;
 
   res.json({
