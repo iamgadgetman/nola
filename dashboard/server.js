@@ -504,16 +504,16 @@ async function fetchContainers() {
 async function fetchDatabases() {
   const [up, uptime, connected, maxConn, running, queries, slow, aborted, bpReads, bpReq] =
     await Promise.all([
-      promQuery('mysql_up{job="mysql"}'),
-      promQuery('mysql_global_status_uptime{job="mysql"}'),
-      promQuery('mysql_global_status_threads_connected{job="mysql"}'),
-      promQuery('mysql_global_variables_max_connections{job="mysql"}'),
-      promQuery('mysql_global_status_threads_running{job="mysql"}'),
-      promQuery('rate(mysql_global_status_queries{job="mysql"}[5m])'),
-      promQuery('rate(mysql_global_status_slow_queries{job="mysql"}[5m])'),
-      promQuery('rate(mysql_global_status_aborted_connects{job="mysql"}[5m])'),
-      promQuery('rate(mysql_global_status_innodb_buffer_pool_reads{job="mysql"}[5m])'),
-      promQuery('rate(mysql_global_status_innodb_buffer_pool_read_requests{job="mysql"}[5m])'),
+      promQuery('mysql_up{job=~"mysql.*"}'),
+      promQuery('mysql_global_status_uptime{job=~"mysql.*"}'),
+      promQuery('mysql_global_status_threads_connected{job=~"mysql.*"}'),
+      promQuery('mysql_global_variables_max_connections{job=~"mysql.*"}'),
+      promQuery('mysql_global_status_threads_running{job=~"mysql.*"}'),
+      promQuery('rate(mysql_global_status_queries{job=~"mysql.*"}[5m])'),
+      promQuery('rate(mysql_global_status_slow_queries{job=~"mysql.*"}[5m])'),
+      promQuery('rate(mysql_global_status_aborted_connects{job=~"mysql.*"}[5m])'),
+      promQuery('rate(mysql_global_status_innodb_buffer_pool_reads{job=~"mysql.*"}[5m])'),
+      promQuery('rate(mysql_global_status_innodb_buffer_pool_read_requests{job=~"mysql.*"}[5m])'),
     ]);
 
   if (!up?.length) return null;
@@ -558,13 +558,13 @@ async function fetchDatabases() {
 // map to Redis (slow queries, worker threads) are left null.
 async function fetchRedis() {
   const [up, uptime, clients, maxClients, cmds, hits, misses] = await Promise.all([
-    promQuery('redis_up{job="redis"}'),
-    promQuery('redis_uptime_in_seconds{job="redis"}'),
-    promQuery('redis_connected_clients{job="redis"}'),
-    promQuery('redis_config_maxclients{job="redis"}'),
-    promQuery('rate(redis_commands_processed_total{job="redis"}[5m])'),
-    promQuery('rate(redis_keyspace_hits_total{job="redis"}[5m])'),
-    promQuery('rate(redis_keyspace_misses_total{job="redis"}[5m])'),
+    promQuery('redis_up{job=~"redis.*"}'),
+    promQuery('redis_uptime_in_seconds{job=~"redis.*"}'),
+    promQuery('redis_connected_clients{job=~"redis.*"}'),
+    promQuery('redis_config_maxclients{job=~"redis.*"}'),
+    promQuery('rate(redis_commands_processed_total{job=~"redis.*"}[5m])'),
+    promQuery('rate(redis_keyspace_hits_total{job=~"redis.*"}[5m])'),
+    promQuery('rate(redis_keyspace_misses_total{job=~"redis.*"}[5m])'),
   ]);
 
   if (!up?.length) return null;
