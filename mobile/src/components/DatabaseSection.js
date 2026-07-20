@@ -25,6 +25,11 @@ function DatabaseCard({ db }) {
         <View style={styles.cardHeaderLeft}>
           <View style={[styles.dot, { backgroundColor: up ? '#00d26a' : '#ff4757' }]} />
           <Text style={styles.dbName} numberOfLines={1}>{db.name}</Text>
+          {db.engine ? (
+            <Text style={[styles.engine, db.engine === 'redis' ? styles.engineRedis : styles.engineMysql]}>
+              {db.engine}
+            </Text>
+          ) : null}
         </View>
         <Text style={styles.uptime}>{up ? (db.uptime || '') : 'offline'}</Text>
       </View>
@@ -107,7 +112,13 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 },
   dot: { width: 9, height: 9, borderRadius: 5 },
-  dbName: { color: '#e0e0e0', fontSize: 14, fontWeight: '600', flex: 1 },
+  dbName: { color: '#e0e0e0', fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  engine: {
+    fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5,
+    paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, overflow: 'hidden',
+  },
+  engineMysql: { color: '#7b7bff', backgroundColor: '#1a1a3e' },
+  engineRedis: { color: '#ff7a45', backgroundColor: '#2e1a12' },
   uptime: { color: '#666', fontSize: 11 },
 
   connRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
