@@ -29,6 +29,11 @@ services:
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
+    # cAdvisor v0.49's Docker client speaks API 1.24; Docker Engine 29+ rejects it
+    # (min 1.40), which leaves containers UNNAMED on systemd-cgroup hosts and hides
+    # them from the dashboard's name!="" filter. Force a supported API version.
+    environment:
+      - DOCKER_API_VERSION=1.40
     ports:
       - "${CADVISOR_PORT}:8080"
     volumes:

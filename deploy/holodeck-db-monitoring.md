@@ -57,6 +57,8 @@ services:
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
+    environment:
+      - DOCKER_API_VERSION=1.40   # Docker 29+ rejects cAdvisor's default 1.24 client
     ports:
       - "8081:8080"          # host 8081 (NOT 8080 — AMP owns it on holodeck)
     volumes:
