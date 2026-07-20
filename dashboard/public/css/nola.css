@@ -421,8 +421,98 @@ a { color: var(--accent); text-decoration: none; }
 /* ─── UPS card ──────────────────────────────────────────── */
 .ups-status-badge.ok   { background: var(--ok);   color: #000; }
 .ups-status-badge.warn { background: var(--warn);  color: #000; }
+.ups-status-badge.crit { background: var(--crit);  color: #fff; }
 
 .ups-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* Per-unit blocks when more than one UPS is shown (Fort UPS, Hawk UPS) */
+.ups-unit { display: flex; flex-direction: column; gap: 10px; }
+.ups-unit + .ups-unit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.ups-unit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ups-unit-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ups-unit-status {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.ups-unit-status.ok   { background: var(--ok-dim);   color: var(--ok); }
+.ups-unit-status.warn { background: var(--warn-dim); color: var(--warn); }
+.ups-unit-status.crit { background: var(--crit-dim); color: var(--crit); }
+
+/* ─── Firewalls (netdata) card ──────────────────────────── */
+.netdata-body { display: flex; flex-direction: column; gap: 10px; }
+.nd-unit { display: flex; flex-direction: column; gap: 8px; }
+.nd-unit + .nd-unit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.nd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nd-name { font-size: 0.82rem; font-weight: 600; letter-spacing: 0.02em; }
+.nd-anom {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.nd-anom.ok   { background: var(--ok-dim);   color: var(--ok); }
+.nd-anom.warn { background: var(--warn-dim); color: var(--warn); }
+.nd-anom.crit { background: var(--crit-dim); color: var(--crit); }
+.nd-stats { display: flex; gap: 8px; }
+.nd-stat {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.nd-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.nd-stat-val { font-size: 0.85rem; font-weight: 500; }
+.nd-stat-val.warn { color: var(--warn); }
+.nd-stat-val.crit { color: var(--crit); }
+.nd-ifaces { display: flex; flex-direction: column; gap: 4px; }
+.nd-iface {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+.nd-iface-dev { color: var(--text-muted); font-family: var(--font-mono, monospace); }
+.nd-iface-bw { display: flex; gap: 10px; }
+.nd-dn { color: var(--ok); }
+.nd-up { color: #0ea5e9; }
+.nd-iface-idle { font-size: 0.72rem; color: var(--text-muted); }
 .ups-no-data { color: var(--text-muted); font-size: 0.85rem; }
 
 .ups-charge-row {
