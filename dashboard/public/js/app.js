@@ -78,6 +78,7 @@ function renderDashboard(d) {
   renderNetdata(d.netdata);
   renderAlerts(d.alerts);
   renderProxmox(d.pve);
+  renderUnraid(d.unraid);
   renderContainers(d.containers);
   updateSummary(d);
   document.getElementById('last-updated').textContent =
@@ -305,6 +306,89 @@ function renderAlerts(alerts) {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── Unraid Card ─────────────────────────────────────────
+function fmtBytes(n) {
+  if (n == null || isNaN(n)) return '—';
+  const tb = n / 1e12;
+  if (tb >= 1) return `${tb.toFixed(tb >= 10 ? 0 : 1)} TB`;
+  const gb = n / 1e9;
+  if (gb >= 1) return `${gb.toFixed(gb >= 10 ? 0 : 1)} GB`;
+  return `${Math.round(n / 1e6)} MB`;
+}
+
+function unraidMountRow(m) {
+  const pct = m.pct != null ? Math.min(Math.max(m.pct, 0), 100) : 0;
+  const cls = pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '';
+  const temp = m.temp_c != null ? `${m.temp_c}°C` : '';
+  const bad  = m.status && m.status !== 'DISK_OK';
+  return `
+    <div class="unraid-mount">
+      <div class="unraid-mount-top">
+        <span class="unraid-mount-name">${escHtml(m.name)}<span class="unraid-mount-tag">${escHtml(m.type)}</span></span>
+        <span class="unraid-mount-meta ${bad ? 'crit' : ''}">${bad ? escHtml(m.status) + ' · ' : ''}${temp}</span>
+      </div>
+      <div class="unraid-bar"><div class="unraid-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="unraid-mount-vals">
+        <span class="${cls}">${m.pct != null ? m.pct + '%' : '—'}</span>
+        <span>${fmtBytes(m.used_bytes)} / ${fmtBytes(m.size_bytes)}</span>
+      </div>
+    </div>`;
+}
+
+function renderUnraid(u) {
+  const body  = document.getElementById('unraid-body');
+  const badge = document.getElementById('unraid-badge');
+  const card  = document.getElementById('card-unraid');
+  if (!body) return;
+
+  if (!u) {
+    body.innerHTML = '<div class="ctr-no-data">No Unraid data</div>';
+    if (badge) badge.textContent = '—';
+    if (card)  card.style.opacity = '0.4';
+    return;
+  }
+  if (card)  card.style.opacity = '';
+
+  const started = (u.state || '').toUpperCase() === 'STARTED';
+  if (badge) {
+    badge.textContent = u.state || '—';
+    badge.className = `nola-card__badge ${started ? 'ok' : 'warn'}`;
+  }
+
+  const capPct = u.capacity?.pct != null ? Math.min(Math.max(u.capacity.pct, 0), 100) : 0;
+  const capCls = capPct >= 90 ? 'crit' : capPct >= 75 ? 'warn' : '';
+  const c = u.containers || {};
+
+  const parityBad = (u.parity || []).filter(p => p.status && p.status !== 'DISK_OK');
+  const parityTxt = (u.parity || []).length
+    ? (parityBad.length ? `${parityBad.length} parity fault` : `Parity OK (${u.parity.length})`)
+    : '';
+
+  body.innerHTML = `
+    <div class="unraid-summary">
+      <span class="unraid-host">${escHtml(u.host || u.name || 'unraid')}</span>
+      ${u.uptime ? `<span class="unraid-sep">·</span><span>up ${escHtml(u.uptime)}</span>` : ''}
+      ${parityTxt ? `<span class="unraid-sep">·</span><span class="${parityBad.length ? 'crit' : ''}">${escHtml(parityTxt)}</span>` : ''}
+    </div>
+
+    <div class="unraid-cap">
+      <div class="unraid-cap-top">
+        <span class="unraid-cap-label">Array capacity</span>
+        <span class="unraid-cap-vals"><span class="${capCls}">${u.capacity?.pct ?? '—'}%</span> · ${fmtBytes(u.capacity?.used_bytes)} / ${fmtBytes(u.capacity?.total_bytes)}</span>
+      </div>
+      <div class="unraid-bar tall"><div class="unraid-bar-fill ${capCls}" style="width:${capPct}%"></div></div>
+    </div>
+
+    <div class="unraid-mounts">${(u.mounts || []).map(unraidMountRow).join('') || '<div class="ctr-no-data">No mounts</div>'}</div>
+
+    <div class="unraid-ctr">
+      <span class="card-icon">🐋</span>
+      <span class="unraid-ctr-total">${c.total ?? '—'} containers</span>
+      <span class="unraid-ctr-run">${c.running ?? 0} running</span>
+      <span class="unraid-ctr-stop">${c.stopped ?? 0} stopped</span>
+    </div>`;
 }
 
 // ─── Containers Card ─────────────────────────────────────
