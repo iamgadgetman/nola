@@ -1532,3 +1532,95 @@ a { color: var(--accent); text-decoration: none; }
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+
+/* ─── Unraid Card ───────────────────────────────────────── */
+.nola-card__badge.ok { background: var(--ok-dim); color: var(--ok); }
+
+.unraid-section { margin-bottom: var(--gap); }
+.card-unraid { border-top: 2px solid #f59e0b; }
+
+.unraid-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.unraid-host { color: var(--text); font-weight: 600; font-family: var(--font-mono); }
+.unraid-sep { color: var(--border); }
+.unraid-summary .crit { color: var(--crit); }
+
+.unraid-cap { margin-bottom: 14px; }
+.unraid-cap-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+.unraid-cap-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.unraid-cap-vals { font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+.unraid-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.unraid-bar.tall { height: 9px; }
+.unraid-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, #10d070, #0e9f5a);
+  transition: width 0.4s ease;
+}
+.unraid-bar-fill.warn { background: linear-gradient(90deg, #ffab00, #f59e0b); }
+.unraid-bar-fill.crit { background: linear-gradient(90deg, #ff2d55, #dc2626); }
+
+.unraid-mounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin-bottom: 14px;
+}
+.unraid-mount-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.unraid-mount-name { font-size: 0.8rem; color: var(--text); font-family: var(--font-mono); }
+.unraid-mount-tag {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  background: var(--accent-dim);
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+}
+.unraid-mount-meta { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono); }
+.unraid-mount-meta.crit { color: var(--crit); }
+.unraid-mount-vals {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 3px;
+}
+.unraid-mount-vals .warn { color: var(--warn); }
+.unraid-mount-vals .crit { color: var(--crit); }
+
+.unraid-ctr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.8rem;
+}
+.unraid-ctr-total { color: var(--text); font-weight: 600; }
+.unraid-ctr-run  { color: var(--ok); }
+.unraid-ctr-stop { color: var(--text-muted); }

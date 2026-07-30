@@ -17,6 +17,7 @@ export function useNetdata() {
   const [crowdsec, setCrowdsec]       = useState(null);
   const [pve, setPve]                 = useState(null);
   const [netdata, setNetdata]         = useState([]);
+  const [unraid, setUnraid]           = useState(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -55,6 +56,7 @@ export function useNetdata() {
       setCrowdsec(data.crowdsec || null);
       setPve(data.pve || null);
       setNetdata(Array.isArray(data.netdata) ? data.netdata : []);
+      setUnraid(data.unraid || null);
       setLastUpdated(new Date());
     } catch (e) {
       setError(e.message);
@@ -69,5 +71,5 @@ export function useNetdata() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  return { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, loading, error, lastUpdated, refresh };
+  return { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, loading, error, lastUpdated, refresh };
 }
