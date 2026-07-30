@@ -82,6 +82,14 @@ const AMP_PROXY_URL = process.env.AMP_URL      || '';
 const AMP_USERNAME  = process.env.AMP_USERNAME || '';
 const AMP_PASSWORD  = process.env.AMP_PASSWORD || '';
 
+// ─── Unraid API ────────────────────────────────────────────────────────────────
+// Unraid Connect GraphQL API (the unraid-api service on the server). Feeds the
+// Unraid card: array status + capacity, per-disk/cache usage, and containers.
+// UNRAID_API_KEY is created on the server (Settings → Management Access → API keys).
+const UNRAID_URL     = process.env.UNRAID_URL     || 'http://10.0.6.19';
+const UNRAID_API_KEY = process.env.UNRAID_API_KEY || '';
+const UNRAID_NAME    = process.env.UNRAID_NAME    || 'Unraid';
+
 app.use('/api', (req, res, next) => {
   if (process.env.AUTH_ENABLED !== 'true') return next();
 
@@ -861,9 +869,104 @@ async function fetchProxmox() {
   };
 }
 
+// Unraid Connect GraphQL API. One query returns the array (state + capacity +
+// per-disk/cache/parity), the docker container list, and host info. Disk/array
+// sizes come back in KiB (1024-byte units) — converted to bytes here. Shaped so
+// the "NAS mounts" are array data disks + cache pools (things with a filesystem),
+// while parity disks are health-only (no usable filesystem). See UNRAID_* env.
+async function unraidQuery(query) {
+  const res = await withTimeout(fetch(`${UNRAID_URL}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': UNRAID_API_KEY },
+    body: JSON.stringify({ query }),
+  }), 6000);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data || null;
+}
+
+async function fetchUnraid() {
+  if (!UNRAID_API_KEY) return null;
+
+  const data = await unraidQuery(`{
+    info { os { hostname uptime } }
+    array {
+      state
+      capacity { kilobytes { free used total } }
+      disks    { name size status temp fsSize fsFree fsUsed type }
+      caches   { name size temp fsSize fsFree fsUsed }
+      parities { name status temp size }
+    }
+    docker { containers { names state } }
+  }`);
+  if (!data?.array) return null;
+
+  const KiB = 1024;
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+  const pctOf = (used, total) => (total > 0 ? Math.round((used / total) * 1000) / 10 : null);
+
+  // Array data disks + cache pools become the usable "mounts" (they carry a
+  // filesystem). fsUsed/fsFree/fsSize are per-filesystem; fall back to raw size.
+  const toMount = (d, type) => {
+    const used = num(d.fsUsed) * KiB;
+    const free = num(d.fsFree) * KiB;
+    const size = (num(d.fsSize) || num(d.size)) * KiB;
+    return {
+      name:       d.name,
+      type,
+      used_bytes: used,
+      free_bytes: free,
+      size_bytes: size,
+      pct:        pctOf(used, size),
+      temp_c:     d.temp != null ? Math.round(num(d.temp)) : null,
+      status:     d.status || null,
+    };
+  };
+  const mounts = [
+    ...(data.array.disks  || []).map(d => toMount(d, d.type || 'DATA')),
+    ...(data.array.caches || []).map(d => toMount(d, 'CACHE')),
+  ];
+
+  const parity = (data.array.parities || []).map(p => ({
+    name:   p.name,
+    status: p.status || null,
+    temp_c: p.temp != null ? Math.round(num(p.temp)) : null,
+  }));
+
+  const cap = data.array.capacity?.kilobytes || {};
+  const capUsed = num(cap.used) * KiB, capTotal = num(cap.total) * KiB;
+  const capacity = {
+    used_bytes:  capUsed,
+    free_bytes:  num(cap.free) * KiB,
+    total_bytes: capTotal,
+    pct:         pctOf(capUsed, capTotal),
+  };
+
+  const ctrs = (data.docker?.containers || []).map(c => {
+    const name = (Array.isArray(c.names) ? c.names[0] : c.names || '').replace(/^\//, '');
+    return { name, state: c.state, running: c.state === 'RUNNING' };
+  }).sort((a, b) => (b.running - a.running) || a.name.localeCompare(b.name));
+  const running = ctrs.filter(c => c.running).length;
+
+  // uptime is an ISO boot timestamp; convert to an elapsed-seconds string.
+  const boot = Date.parse(data.info?.os?.uptime);
+  const uptime = isNaN(boot) ? null : fmtUptime((Date.now() - boot) / 1000);
+
+  return {
+    name:     UNRAID_NAME,
+    host:     data.info?.os?.hostname || null,
+    state:    data.array.state || null,
+    uptime,
+    capacity,
+    mounts,
+    parity,
+    containers: { total: ctrs.length, running, stopped: ctrs.length - running, list: ctrs },
+  };
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult, pgResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult, pgResult, unraidResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
@@ -874,6 +977,7 @@ app.get('/api/data', async (req, res) => {
     fetchNetdata(),
     fetchRedis(),
     fetchPostgres(),
+    fetchUnraid(),
   ]);
 
   const prom    = promResult.status    === 'fulfilled' ? promResult.value    : null;
@@ -886,6 +990,7 @@ app.get('/api/data', async (req, res) => {
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
   const redisDbs = redisResult.status  === 'fulfilled' ? redisResult.value   : null;
   const pgDbs    = pgResult.status     === 'fulfilled' ? pgResult.value      : null;
+  const unraid  = unraidResult.status  === 'fulfilled' ? unraidResult.value  : null;
 
   // MySQL/MariaDB + Redis + PostgreSQL share one databases view (each row carries `engine`)
   const databases = (mysqlDbs || redisDbs || pgDbs)
@@ -904,6 +1009,7 @@ app.get('/api/data', async (req, res) => {
     containers: ctr,
     databases,
     netdata,
+    unraid,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
       alerts:      alertsResult.status === 'rejected' ? 'fetch failed' : null,
@@ -913,6 +1019,7 @@ app.get('/api/data', async (req, res) => {
       containers:  ctr    ? null : 'unavailable',
       databases:   databases ? null : 'unavailable',
       netdata:     netdata ? null : 'unavailable',
+      unraid:      unraid ? null : 'unavailable',
     },
   });
 });

@@ -8,11 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNetdata } from '../hooks/useNetdata';
 import { useTraffic } from '../hooks/useTraffic';
 import FirewallHealthSection from '../components/FirewallHealthSection';
+import UnraidSection from '../components/UnraidSection';
 import { MetricBar } from '../components/MiniChart';
 import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
-  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
+  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
   const { interfaces, loading: ntLoading, lastUpdated: ntUpdated, refresh: ntRefresh } = useTraffic();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -81,6 +82,14 @@ export default function NetworkScreen() {
               updated={fmt(ndUpdated)}
             />
             <ProxmoxSection pve={pve} />
+          </>
+        ) : null}
+
+        {/* ── Unraid (Unraid Connect API) ── */}
+        {unraid ? (
+          <>
+            <SectionHeader title="Unraid" icon="server-outline" updated={fmt(ndUpdated)} />
+            <UnraidSection unraid={unraid} loading={ndLoading} />
           </>
         ) : null}
 
