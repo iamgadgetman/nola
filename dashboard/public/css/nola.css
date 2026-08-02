@@ -1532,7 +1532,6 @@ a { color: var(--accent); text-decoration: none; }
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
-
 /* ─── Unraid Card ───────────────────────────────────────── */
 .nola-card__badge.ok { background: var(--ok-dim); color: var(--ok); }
 

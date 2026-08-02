@@ -2,8 +2,8 @@
 //  N.O.L.A. Dashboard — Main App
 // ═══════════════════════════════════════════════════════════
 
-const GRAFANA_BASE   = 'http://10.0.5.31:3000';
-const LIBRENMS_BASE  = 'http://10.0.6.97:8000';
+const GRAFANA_BASE   = 'http://10.0.6.31:3000';
+const LIBRENMS_BASE  = 'http://10.0.7.97:8000';
 const REFRESH_MS     = 30_000;
 const KIOSK_DURATIONS = [15000, 12000, 12000, 12000]; // ms per slide
 
@@ -75,6 +75,7 @@ function renderDashboard(d) {
   renderSpeedtests(d.speedtests);
   renderCrowdsec(d.crowdsec);
   renderUps(d.ups);
+  renderServers(d.servers);
   renderNetdata(d.netdata);
   renderAlerts(d.alerts);
   renderProxmox(d.pve);
@@ -228,6 +229,71 @@ function renderUps(upsList) {
       ${u.model ? `<div class="ups-model">${escHtml(u.model)}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// SNMP-monitored servers (OMV NAS boxes), sourced from LibreNMS. Reuses the
+// UPS card's bar/stat styling for CPU / RAM / disk usage.
+function renderServers(list) {
+  const body  = document.getElementById('servers-body');
+  const badge = document.getElementById('servers-badge');
+  if (!body) return;
+  if (!list?.length) {
+    body.innerHTML = '<div class="ups-no-data">No SNMP server data</div>';
+    if (badge) { badge.textContent = '—'; badge.className = 'nola-card__badge'; }
+    return;
+  }
+
+  const down = list.filter(s => s.status !== 'UP');
+  if (badge) {
+    badge.textContent = down.length ? `${down.length} ⚠` : (list.length > 1 ? `${list.length} OK` : 'UP');
+    badge.className = 'nola-card__badge ' + (down.length ? 'crit' : 'ok');
+  }
+
+  const fmtBytes = b => {
+    if (b == null || isNaN(b)) return '—';
+    const u = ['B','KB','MB','GB','TB','PB']; let i = 0; b = Number(b);
+    while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+    return `${b >= 100 ? b.toFixed(0) : b.toFixed(1)} ${u[i]}`;
+  };
+  const fmtUptime = s => {
+    if (s == null) return '—';
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+    return d ? `${d}d ${h}h` : `${h}h`;
+  };
+  const barCls = p => p == null ? '' : p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'ok';
+  const bar = (label, pct, sub) => {
+    const p = pct == null ? 0 : pct;
+    return `
+      <div class="ups-charge-row">
+        <span class="ups-charge-label">${label}</span>
+        <div class="ups-bar-wrap">
+          <div class="ups-bar-fill ${barCls(pct)}" style="width:${p}%"></div>
+        </div>
+        <span class="ups-charge-val ${barCls(pct)}">${pct == null ? '—' : pct + '%'}${sub ? ` <small>${sub}</small>` : ''}</span>
+      </div>`;
+  };
+
+  body.innerHTML = list.map(s => `
+    <div class="ups-unit">
+      <div class="ups-unit-head">
+        <span class="ups-unit-name">${escHtml(s.name)}${s.site ? ` <small>${escHtml(s.site)}</small>` : ''}</span>
+        <span class="ups-unit-status ${s.status === 'UP' ? 'ok' : 'crit'}">${escHtml(s.status)}</span>
+      </div>
+      ${bar('CPU', s.cpu_pct, null)}
+      ${bar('RAM', s.ram?.pct, s.ram ? fmtBytes(s.ram.used) + ' / ' + fmtBytes(s.ram.total) : null)}
+      ${bar('Disk', s.disk?.pct, s.disk ? fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.size) : null)}
+      <div class="ups-stats-row">
+        <div class="ups-stat">
+          <span class="ups-stat-label">Uptime</span>
+          <span class="ups-stat-val">${fmtUptime(s.uptime_s)}</span>
+        </div>
+        <div class="ups-stat">
+          <span class="ups-stat-label">Volume</span>
+          <span class="ups-stat-val">${s.disk ? escHtml(s.disk.mount) : '—'}</span>
+        </div>
+      </div>
+      ${s.os ? `<div class="ups-model">${escHtml(s.os)}</div>` : ''}
+    </div>`).join('');
 }
 
 function renderNetdata(list) {

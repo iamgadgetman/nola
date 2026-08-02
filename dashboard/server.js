@@ -6,13 +6,13 @@ const https   = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const PROMETHEUS_URL = process.env.PROMETHEUS_URL || 'http://10.0.5.42:9090';
-const GRAFANA_URL    = process.env.GRAFANA_URL    || 'http://10.0.5.31:3000';
+const PROMETHEUS_URL = process.env.PROMETHEUS_URL || 'http://10.0.6.42:9090';
+const GRAFANA_URL    = process.env.GRAFANA_URL    || 'http://10.0.6.31:3000';
 const GRAFANA_TOKEN  = process.env.GRAFANA_TOKEN  || '';
-const LIBRENMS_URL   = process.env.LIBRENMS_URL   || 'http://10.0.6.97:8000';
+const LIBRENMS_URL   = process.env.LIBRENMS_URL   || 'http://10.0.7.97:8000';
 const LIBRENMS_TOKEN = process.env.LIBRENMS_TOKEN || '';
 const INFLUXDB_DS_UID = process.env.INFLUXDB_DATASOURCE_UID || '';
-const INFLUXDB_URL   = process.env.INFLUXDB_URL   || 'http://10.0.5.39:8086';
+const INFLUXDB_URL   = process.env.INFLUXDB_URL   || 'http://10.0.6.39:8086';
 const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN;
 const INFLUXDB_ORG   = process.env.INFLUXDB_ORG   || 'galaxy-lab';
 const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || 'opnsense';
@@ -39,7 +39,7 @@ function netdataFwName(instance) {
 }
 
 // ─── LLM Config ─────────────────────────────────────────────────────────────
-const OLLAMA_URL    = process.env.OLLAMA_URL    || 'http://10.0.5.45:11434';
+const OLLAMA_URL    = process.env.OLLAMA_URL    || 'http://10.0.6.45:11434';
 const OLLAMA_MODEL  = process.env.OLLAMA_MODEL  || 'llama3.2:3b';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 // Set LLM_FALLBACK=false to disable Claude fallback and only use Ollama
@@ -50,9 +50,17 @@ const FW_HOSTS    = (process.env.FW_HOSTS    || 'fort-opnsense,hawk-opnsense').s
 const FW_DISPLAY  = { 'fort-opnsense': 'fort', 'hawk-opnsense': 'hawk' };
 const PVE_HOSTS   = (process.env.PVE_HOSTS   || 'pve').split(',').map(h => h.trim());
 
-// Optional friendly names for MariaDB/MySQL exporter targets, so several DBs on
-// holodeck read as names instead of host:port. Format (comma-separated):
-//   "holodeck.fort.example.com:9104=Minecraft DB,holodeck.fort.example.com:9105=Rust DB"
+// SNMP-monitored NAS/servers surfaced from LibreNMS (which polls them via SNMP).
+// Format: "librenmsDeviceId|Friendly Name|Site" entries separated by ';'.
+// Fort OMV only for now (LibreNMS device_id 7); add the Hawk OMV here once healthy.
+const SNMP_SERVERS = (process.env.SNMP_SERVERS || '7|OMV|Fort')
+  .split(';').map(s => s.trim()).filter(Boolean)
+  .map(s => { const [id, name, site] = s.split('|'); return { id: (id||'').trim(), name: (name||'').trim(), site: (site||'').trim() }; })
+  .filter(s => s.id);
+
+// Optional friendly names for MariaDB/MySQL exporter targets (job="mysql"), keyed
+// by Prometheus `instance` label. The `server` label from Prometheus already
+// names each DB, so this is just an optional override.
 const DB_NAMES = Object.fromEntries(
   (process.env.DB_FRIENDLY_NAMES || '').split(',').filter(Boolean)
     .map(p => p.split('=').map(s => s.trim()))
@@ -61,7 +69,7 @@ const DB_NAMES = Object.fromEntries(
 
 // ─── Proxmox API Config ──────────────────────────────────────────────────────
 // PVE_API_TOKEN format: "root@pam!tokenid=<secret>"
-const PVE_API_URL   = process.env.PVE_API_URL   || 'https://10.0.3.32:8006';
+const PVE_API_URL   = process.env.PVE_API_URL   || 'https://10.0.4.32:8006';
 const PVE_API_TOKEN = process.env.PVE_API_TOKEN || '';
 // Node name as it appears in the Proxmox cluster (default: pve)
 const PVE_NODE      = process.env.PVE_NODE      || 'pve';
@@ -89,6 +97,7 @@ const AMP_PASSWORD  = process.env.AMP_PASSWORD || '';
 const UNRAID_URL     = process.env.UNRAID_URL     || 'http://10.0.6.19';
 const UNRAID_API_KEY = process.env.UNRAID_API_KEY || '';
 const UNRAID_NAME    = process.env.UNRAID_NAME    || 'Unraid';
+
 
 app.use('/api', (req, res, next) => {
   if (process.env.AUTH_ENABLED !== 'true') return next();
@@ -507,8 +516,7 @@ async function fetchContainers() {
 }
 
 // MariaDB/MySQL performance via mysqld_exporter (job="mysql"). One target per DB;
-// results are keyed by the Prometheus `instance` label so several DBs on holodeck
-// each become a row. See deploy/holodeck-db-monitoring.md for exporter setup.
+// results keyed by the Prometheus `instance` label so each DB is its own row.
 async function fetchDatabases() {
   const [up, uptime, connected, maxConn, running, queries, slow, aborted, bpReads, bpReq] =
     await Promise.all([
@@ -540,7 +548,6 @@ async function fetchDatabases() {
     const inst = r.metric.instance;
     const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
     const reads = bprM[inst], req = bpqM[inst];
-    // Buffer-pool hit ratio: 1 - disk_reads / logical_read_requests (rate-based)
     const hitPct = (req != null && req > 0) ? round1((1 - reads / req) * 100) : null;
     const conn = conM[inst], max = maxM[inst];
     return {
@@ -640,18 +647,17 @@ async function fetchPostgres() {
     const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
     const conn = conM[inst], max = maxM[inst];
     const h = hM[inst], rd = rM[inst];
-    // Postgres cache-hit ratio: blocks served from shared buffers vs. read from disk
     const hitPct = (h != null && rd != null && (h + rd) > 0) ? round1((h / (h + rd)) * 100) : null;
     return {
       name,
       instance:        inst,
       up:              r.value[1] === '1',
-      uptime:          null,   // not exposed via multi-target probe
+      uptime:          null,
       connections:     conn != null ? Math.round(conn) : null,
       max_conn:        max  != null ? Math.round(max)  : null,
       conn_pct:        (conn != null && max) ? round1((conn / max) * 100) : null,
       threads_running: null,
-      qps:             round1(xM[inst]),   // transactions/sec
+      qps:             round1(xM[inst]),
       slow_qps:        null,
       aborted_qps:     null,
       buffer_hit_pct:  hitPct,
@@ -755,6 +761,86 @@ async function fetchUps() {
   upsList.sort((a, b) => (order[a.name] ?? 9) - (order[b.name] ?? 9) || a.name.localeCompare(b.name));
 
   return upsList;
+}
+
+// ─── LibreNMS (SNMP) ─────────────────────────────────────────────────────────
+// LibreNMS polls the OMV NAS boxes via SNMP already; we just read its API so
+// NOLA doesn't need a second SNMP poller. Returns null on any auth/network fail.
+async function librenmsGet(path) {
+  if (!LIBRENMS_TOKEN) return null;
+  try {
+    const res = await withTimeout(fetch(`${LIBRENMS_URL}/api/v0${path}`, {
+      headers: { 'X-Auth-Token': LIBRENMS_TOKEN },
+    }), 8000);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+// Compact health card for each SNMP-monitored server: status/uptime + CPU
+// (avg processor usage), RAM (physical mempool), and its largest data volume.
+async function fetchServers() {
+  const out = await Promise.all(SNMP_SERVERS.map(async (cfg) => {
+    const dev = await librenmsGet(`/devices/${cfg.id}`);
+    const d = dev?.devices?.[0];
+    if (!d) return null;
+
+    // CPU: average processor_usage across every processor sensor.
+    let cpu_pct = null;
+    const procList = await librenmsGet(`/devices/${cfg.id}/health/processor`);
+    const procIds = (procList?.graphs || []).map(g => g.sensor_id);
+    if (procIds.length) {
+      const procs = await Promise.all(procIds.map(id =>
+        librenmsGet(`/devices/${cfg.id}/health/processor/${id}`)));
+      const vals = procs.map(p => p?.graphs?.[0]?.processor_usage)
+        .filter(v => v != null && !isNaN(v));
+      if (vals.length) cpu_pct = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+
+    // RAM: the "Physical memory" mempool (fallback: first mempool sensor).
+    let ram = null;
+    const memList = await librenmsGet(`/devices/${cfg.id}/health/mempool`);
+    const memSensor = (memList?.graphs || []).find(g => /physical/i.test(g.desc || ''))
+                   || (memList?.graphs || [])[0];
+    if (memSensor) {
+      const m = await librenmsGet(`/devices/${cfg.id}/health/mempool/${memSensor.sensor_id}`);
+      const g = m?.graphs?.[0];
+      if (g) ram = { pct: Math.round(g.mempool_perc), used: g.mempool_used, total: g.mempool_total };
+    }
+
+    // Disk: largest real volume (skip tmpfs/pseudo mounts).
+    let disk = null;
+    const stList = await librenmsGet(`/devices/${cfg.id}/health/storage`);
+    const stIds = (stList?.graphs || [])
+      .filter(g => !/^\/(tmp|run|dev|proc|sys|boot)(\/|$)/.test(g.desc || ''))
+      .map(g => g.sensor_id);
+    if (stIds.length) {
+      const sts = await Promise.all(stIds.map(id =>
+        librenmsGet(`/devices/${cfg.id}/health/storage/${id}`)));
+      // Largest volume wins; on a tie prefer a friendly share path over OMV's
+      // raw /srv/dev-disk-by-* mount (both point at the same physical disk).
+      const rawMount = m => /^\/srv\/dev-disk/.test(m || '');
+      const vols = sts.map(s => s?.graphs?.[0]).filter(Boolean)
+        .sort((a, b) => (b.storage_size || 0) - (a.storage_size || 0)
+                     || (rawMount(a.storage_descr) - rawMount(b.storage_descr)));
+      const v = vols[0];
+      if (v) disk = { mount: v.storage_descr, pct: Math.round(v.storage_perc),
+                      used: v.storage_used, size: v.storage_size };
+    }
+
+    return {
+      name:    cfg.name || d.sysName || d.hostname,
+      site:    cfg.site || '',
+      status:  d.status ? 'UP' : 'DOWN',
+      uptime_s: d.uptime ?? null,
+      os:      d.hardware || d.os || '',
+      cpu_pct,
+      ram,
+      disk,
+    };
+  }));
+  const list = out.filter(Boolean);
+  return list.length ? list : null;
 }
 
 // Netdata-sourced firewall health. Netdata for both firewalls is already
@@ -966,17 +1052,18 @@ async function fetchUnraid() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult, pgResult, unraidResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, netdataResult, dbResult, redisResult, pgResult, serversResult, unraidResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
     fetchProxmox(),
     fetchUps(),
     fetchContainers(),
-    fetchDatabases(),
     fetchNetdata(),
+    fetchDatabases(),
     fetchRedis(),
     fetchPostgres(),
+    fetchServers(),
     fetchUnraid(),
   ]);
 
@@ -986,10 +1073,11 @@ app.get('/api/data', async (req, res) => {
   const pve     = pveResult.status     === 'fulfilled' ? pveResult.value     : null;
   const ups     = upsResult.status     === 'fulfilled' ? upsResult.value     : null;
   const ctr     = ctrResult.status     === 'fulfilled' ? ctrResult.value     : null;
-  const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
+  const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const redisDbs = redisResult.status  === 'fulfilled' ? redisResult.value   : null;
   const pgDbs    = pgResult.status     === 'fulfilled' ? pgResult.value      : null;
+  const servers  = serversResult.status === 'fulfilled' ? serversResult.value : null;
   const unraid  = unraidResult.status  === 'fulfilled' ? unraidResult.value  : null;
 
   // MySQL/MariaDB + Redis + PostgreSQL share one databases view (each row carries `engine`)
@@ -1007,8 +1095,9 @@ app.get('/api/data', async (req, res) => {
     pve,
     ups,
     containers: ctr,
-    databases,
     netdata,
+    databases,
+    servers,
     unraid,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
@@ -1017,8 +1106,9 @@ app.get('/api/data', async (req, res) => {
       pve:         pve    ? null : 'unavailable',
       ups:         ups    ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
-      databases:   databases ? null : 'unavailable',
       netdata:     netdata ? null : 'unavailable',
+      databases:   databases ? null : 'unavailable',
+      servers:     servers ? null : 'unavailable',
       unraid:      unraid ? null : 'unavailable',
     },
   });

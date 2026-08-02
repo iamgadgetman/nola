@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>N.O.L.A. Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -76,6 +77,18 @@
         <span class="nola-card__badge ups-status-badge" id="ups-status-badge">—</span>
       </div>
       <div class="nola-card__body ups-body" id="ups-body">
+        <div class="ups-loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Servers (SNMP via LibreNMS) -->
+    <div class="nola-card card-servers" id="card-servers">
+      <div class="nola-card__header">
+        <span class="card-icon">🗄️</span>
+        <span class="nola-card__title">NAS Servers</span>
+        <span class="nola-card__badge" id="servers-badge">—</span>
+      </div>
+      <div class="nola-card__body ups-body" id="servers-body">
         <div class="ups-loading">Loading…</div>
       </div>
     </div>
