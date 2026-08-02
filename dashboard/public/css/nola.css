@@ -163,6 +163,36 @@ a { color: var(--accent); text-decoration: none; }
   box-shadow: var(--accent-glow-sm);
 }
 
+/* ─── Page nav ──────────────────────────────────────────── */
+.site-nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: var(--gap);
+  border-bottom: 1px solid var(--border);
+}
+.nav-link {
+  padding: 9px 18px;
+  margin-bottom: -1px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+.nav-link:hover { color: var(--text-dim); }
+.nav-link.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ─── Pages ─────────────────────────────────────────────── */
+.page { display: none; }
+.page.active { display: block; }
+
 /* ─── Host strip ────────────────────────────────────────── */
 .host-strip {
   display: flex;
@@ -395,27 +425,6 @@ a { color: var(--accent); text-decoration: none; }
   font-size: 0.7rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
-}
-
-/* ─── CrowdSec card ─────────────────────────────────────── */
-.crowdsec-body {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.crowdsec-count {
-  font-family: var(--font-mono);
-  font-size: 3rem;
-  font-weight: 700;
-  color: var(--crit);
-  line-height: 1;
-}
-.crowdsec-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 /* ─── UPS card ──────────────────────────────────────────── */

@@ -20,6 +20,7 @@ let progressDuration = 0;
 document.addEventListener('DOMContentLoaded', () => {
   startClock();
   initAsk();
+  initNav();
 
   // Check for ?kiosk param
   if (new URLSearchParams(window.location.search).has('kiosk')) {
@@ -35,6 +36,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'ArrowLeft'  && kioskActive) retreatKioskSlide();
   });
 });
+
+// ─── Page navigation ─────────────────────────────────────
+const PAGES = ['home', 'infra', 'storage', 'network', 'security'];
+
+function showPage(name) {
+  if (!PAGES.includes(name)) name = 'home';
+  document.querySelectorAll('.page').forEach(p =>
+    p.classList.toggle('active', p.id === 'page-' + name));
+  document.querySelectorAll('.nav-link').forEach(b =>
+    b.classList.toggle('active', b.dataset.page === name));
+  if (('#' + name) !== window.location.hash) {
+    history.replaceState(null, '', '#' + name);
+  }
+  // Charts built while their page was hidden have a 0-size canvas; fix on show.
+  requestAnimationFrame(() => {
+    if (name === 'infra')   cpuChart?.resize();
+    if (name === 'network') wanChart?.resize();
+  });
+}
+
+function initNav() {
+  document.querySelectorAll('.nav-link').forEach(btn =>
+    btn.addEventListener('click', () => showPage(btn.dataset.page)));
+  window.addEventListener('hashchange', () =>
+    showPage(window.location.hash.slice(1) || 'home'));
+  showPage(window.location.hash.slice(1) || 'home');
+}
 
 // ─── Clock ───────────────────────────────────────────────
 function startClock() {
@@ -73,7 +101,6 @@ async function loadData() {
 function renderDashboard(d) {
   renderHosts(d.hosts);
   renderSpeedtests(d.speedtests);
-  renderCrowdsec(d.crowdsec);
   renderUps(d.ups);
   renderServers(d.servers);
   renderNetdata(d.netdata);
@@ -156,13 +183,6 @@ function renderSpeedtests(speedtests) {
       </div>
     </div>
   `).join('<div class="speed-divider"></div>');
-}
-
-function renderCrowdsec(cs) {
-  const el = document.getElementById('crowdsec-count');
-  el.textContent = cs?.active_bans ?? '—';
-  const val = cs?.active_bans ?? 0;
-  el.style.color = val > 500 ? 'var(--crit)' : val > 100 ? 'var(--warn)' : 'var(--ok)';
 }
 
 function renderUps(upsList) {
@@ -948,7 +968,6 @@ function renderKioskPerf(d) {
       </div>
     `).join('');
   }
-  document.getElementById('k-bans').textContent = d.crowdsec?.active_bans ?? '—';
 
   // Top resource consumers
   const topHosts = document.getElementById('k-top-hosts');

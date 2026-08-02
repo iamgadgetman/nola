@@ -178,7 +178,7 @@ function vectorToMap(results) {
 
 // ─── Data fetchers ──────────────────────────────────────────────────────────
 async function fetchPrometheus() {
-  const [upNode, upFw, cpu, ram, disk, dlBits, ulBits, bans, bootTime] = await Promise.all([
+  const [upNode, upFw, cpu, ram, disk, dlBits, ulBits, bootTime] = await Promise.all([
     promQuery('up{job="node"}'),
     promQuery('up{job="opnsense_node"}'),
     promQuery('100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle",job="node"}[5m])))'),
@@ -186,7 +186,6 @@ async function fetchPrometheus() {
     promQuery('(node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node"} - node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs",job="node"}) / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node"} * 100'),
     promQuery('speedtest_tracker_download_bits'),
     promQuery('speedtest_tracker_upload_bits'),
-    promQuery('sum(cs_active_decisions{action="ban"})'),
     promQuery('time() - node_boot_time_seconds{job="node"}'),
   ]);
 
@@ -257,9 +256,6 @@ async function fetchPrometheus() {
   return {
     hosts,
     speedtests,
-    crowdsec: {
-      active_bans: bans?.[0]?.value[1] ? parseInt(bans[0].value[1]) : 0,
-    },
   };
 }
 
@@ -388,8 +384,6 @@ function buildLabContext(prom, alerts, pve, ups) {
       lines.push(`Internet (${s.site}): ↓${s.download_mbps ?? '?'} Mbps ↑${s.upload_mbps ?? '?'} Mbps${isp}`);
     }
   }
-
-  lines.push(`CrowdSec active bans: ${prom?.crowdsec?.active_bans ?? '?'}`);
 
   if (pve) {
     const n = pve.node;
@@ -1089,7 +1083,6 @@ app.get('/api/data', async (req, res) => {
     timestamp: new Date().toISOString(),
     hosts:      prom?.hosts      || [],
     speedtests: prom?.speedtests || [],
-    crowdsec:  prom?.crowdsec  || { active_bans: 0 },
     alerts,
     wan,
     pve,
