@@ -92,10 +92,13 @@ export default function ServersSection({ servers, loading }) {
 
   return (
     <View style={styles.card}>
+      {/* The screen's SectionHeader already says "Servers — SNMP", so this row
+          names the data source instead of echoing it (same shape as UnraidSection,
+          whose header names the host rather than the section). */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="hardware-chip-outline" size={16} color="#00d26a" />
-          <Text style={styles.title}>Servers — SNMP</Text>
+          <Text style={styles.title}>LibreNMS</Text>
         </View>
         <Text style={[styles.badge, { color: down.length ? '#ff4757' : '#00d26a' }]}>
           {down.length ? `${down.length} ⚠` : `${servers.length} OK`}
