@@ -7,19 +7,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNetdata } from '../hooks/useNetdata';
 import { useTraffic } from '../hooks/useTraffic';
+import { usePatching } from '../hooks/usePatching';
 import FirewallHealthSection from '../components/FirewallHealthSection';
 import UnraidSection from '../components/UnraidSection';
+import ServersSection from '../components/ServersSection';
+import PatchSection from '../components/PatchSection';
 import { MetricBar } from '../components/MiniChart';
 import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
-  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
+  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, servers, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
   const { interfaces, loading: ntLoading, lastUpdated: ntUpdated, refresh: ntRefresh } = useTraffic();
+  const {
+    patching,
+    loading: pLoading,
+    error: pError,
+    lastUpdated: pUpdated,
+    refresh: pRefresh,
+  } = usePatching();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([ndRefresh(), ntRefresh()]);
+    await Promise.all([ndRefresh(), ntRefresh(), pRefresh()]);
     setRefreshing(false);
   };
 
@@ -72,6 +82,19 @@ export default function NetworkScreen() {
         ) : (
           hosts.map(host => <HostCard key={host.name} host={host} />)
         )}
+
+        {/* ── Servers — SNMP (LibreNMS) ── */}
+        {servers.length > 0 || ndLoading ? (
+          <>
+            <SectionHeader
+              title="Servers — SNMP"
+              icon="server-outline"
+              updated={fmt(ndUpdated)}
+              loading={ndLoading && servers.length === 0}
+            />
+            <ServersSection servers={servers} loading={ndLoading} />
+          </>
+        ) : null}
 
         {/* ── Proxmox (PVE API) ── */}
         {pve ? (
@@ -153,6 +176,15 @@ export default function NetworkScreen() {
           <Text style={styles.banCount}>{crowdsec?.active_bans ?? '—'}</Text>
           <Text style={styles.banLabel}>CrowdSec active bans</Text>
         </View>
+
+        {/* ── Patch status (weekly Ansible audit) ── */}
+        <SectionHeader
+          title="Patch Status"
+          icon="shield-outline"
+          updated={fmt(pUpdated)}
+          loading={pLoading && !patching}
+        />
+        <PatchSection patching={patching} loading={pLoading} error={pError} />
 
         {/* ── Grafana ── */}
         <SectionHeader title="Grafana" icon="bar-chart-outline" />
