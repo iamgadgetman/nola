@@ -15,6 +15,14 @@
   --accent-glow:    0 0 16px rgba(0, 229, 255, 0.3);
   --accent-glow-sm: 0 0 8px  rgba(0, 229, 255, 0.2);
 
+  /* Brand — the NOLA icon yellow. Identity only: wordmark, active nav, kiosk
+     chrome. Never used for data or state, so it can't be confused with
+     --warn (#ffab00), which it neighbours in hue. */
+  --brand:          #FDF001;
+  --brand-dim:      rgba(253, 240, 1, 0.12);
+  --brand-glow:     0 0 16px rgba(253, 240, 1, 0.28);
+  --brand-glow-sm:  0 0 8px  rgba(253, 240, 1, 0.20);
+
   --purple:         #a78bfa;
   --purple-dim:     rgba(167, 139, 250, 0.12);
 
@@ -88,13 +96,18 @@ a { color: var(--accent); text-decoration: none; }
 .brand-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: var(--accent-glow-sm);
-  animation: pulse-cyan 2.5s ease-in-out infinite;
+  background: var(--brand);
+  box-shadow: var(--brand-glow-sm);
+  animation: pulse-brand 2.5s ease-in-out infinite;
 }
 @keyframes pulse-cyan {
   0%, 100% { box-shadow: 0 0 4px var(--accent); }
   50%       { box-shadow: 0 0 14px var(--accent); }
+
+@keyframes pulse-brand {
+  0%, 100% { box-shadow: 0 0 4px var(--brand); }
+  50%       { box-shadow: 0 0 14px var(--brand); }
+}
 }
 
 .brand-title {
@@ -102,7 +115,7 @@ a { color: var(--accent); text-decoration: none; }
   font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: 0.15em;
-  color: var(--accent);
+  color: var(--brand);
 }
 .brand-sub {
   font-size: 0.7rem;
@@ -150,17 +163,17 @@ a { color: var(--accent); text-decoration: none; }
   gap: 6px;
   padding: 7px 14px;
   border-radius: var(--radius-sm);
-  background: var(--accent-dim);
+  background: var(--brand-dim);
   border: 1px solid var(--border-bright);
-  color: var(--accent);
+  color: var(--brand);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   transition: background var(--transition), box-shadow var(--transition);
 }
 .btn-kiosk:hover {
-  background: rgba(0, 229, 255, 0.2);
-  box-shadow: var(--accent-glow-sm);
+  background: rgba(253, 240, 1, 0.2);
+  box-shadow: var(--brand-glow-sm);
 }
 
 /* ─── Host strip ────────────────────────────────────────── */
@@ -978,7 +991,7 @@ a { color: var(--accent); text-decoration: none; }
   transition: background 0.2s, transform 0.2s;
 }
 .kiosk-dot.active {
-  background: var(--accent);
+  background: var(--brand);
   transform: scale(1.3);
   box-shadow: var(--accent-glow-sm);
 }
