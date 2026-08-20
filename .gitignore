@@ -40,3 +40,17 @@ nola-creation.txt
 .claude/
 **/.claude/
 *.local.json
+
+# Workflow backups — contain live credentials (Discord bot tokens, API keys)
+backups/
+
+# Syncthing conflict copies. This tree is replicated; an Aug-2026 conflict
+# silently dropped work, so keep the copies on disk but never commit them.
+*.sync-conflict-*
+
+# Local editor/deploy backups
+*.bak-*
+*.bak
+
+# Stray Claude Code session transcripts
+temperature.txt
