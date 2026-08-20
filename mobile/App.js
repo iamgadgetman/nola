@@ -9,6 +9,7 @@ import { SettingsProvider } from './src/context/SettingsContext';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AMPScreen from './src/screens/AMPScreen';
 import NetworkScreen from './src/screens/NetworkScreen';
+import PowerScreen from './src/screens/PowerScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
@@ -72,6 +73,7 @@ const TAB_ICONS = {
   'Services':     'grid-outline',
   'Game Servers': 'game-controller-outline',
   'Network':      'wifi-outline',
+  'Power':        'flash-outline',
   'Chat':         'chatbubble-ellipses-outline',
   'Settings':     'settings-outline',
 };
@@ -100,6 +102,7 @@ export default function App() {
             <Tab.Screen name="Services"     component={guarded(DashboardScreen)} />
             <Tab.Screen name="Game Servers" component={guarded(AMPScreen)} />
             <Tab.Screen name="Network"      component={guarded(NetworkScreen)} />
+            <Tab.Screen name="Power"        component={guarded(PowerScreen)} />
             <Tab.Screen name="Chat"         component={guarded(ChatScreen)} />
             <Tab.Screen name="Settings"     component={guarded(SettingsScreen)} />
           </Tab.Navigator>

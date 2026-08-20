@@ -12,6 +12,7 @@ export function useNetdata() {
   const { settings } = useSettings();
   const [hosts, setHosts]             = useState([]);
   const [ups, setUps]                 = useState([]);
+  const [power, setPower]             = useState(null);
   const [alerts, setAlerts]           = useState([]);
   const [speedtests, setSpeedtests]   = useState([]);
   const [crowdsec, setCrowdsec]       = useState(null);
@@ -52,6 +53,7 @@ export function useNetdata() {
       }));
       setHosts(mapped);
       setUps(Array.isArray(data.ups) ? data.ups : []);
+      setPower(data.power || null);
       setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
       setSpeedtests(Array.isArray(data.speedtests) ? data.speedtests : []);
       setCrowdsec(data.crowdsec || null);
@@ -73,5 +75,5 @@ export function useNetdata() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  return { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, servers, loading, error, lastUpdated, refresh };
+  return { hosts, ups, power, alerts, speedtests, crowdsec, pve, netdata, unraid, servers, loading, error, lastUpdated, refresh };
 }
