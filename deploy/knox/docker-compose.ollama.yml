@@ -1,5 +1,5 @@
-# Ollama — knox (10.0.5.18) — 18_Net / Fort DMZ
-# Dedicated macvlan IP: 10.0.5.25
+# Ollama — knox (10.0.6.18) — 18_Net / Fort DMZ
+# Dedicated macvlan IP: 10.0.6.25
 #
 # Before deploying:
 #   1. Verify parent interface: ip link  (usually eno1 or enp3s0)
@@ -7,7 +7,7 @@
 #   2. Deploy:  docker compose -f docker-compose.ollama.yml up -d
 #   3. Pull model: docker exec ollama ollama pull llama3.2:3b
 #
-# Ollama API will be reachable at http://10.0.5.25:11434 from the VPS via wg1.
+# Ollama API will be reachable at http://10.0.6.25:11434 from the VPS via wg1.
 
 version: "3.8"
 
@@ -18,8 +18,8 @@ networks:
       parent: eno1        # <-- verify with: ip link
     ipam:
       config:
-        - subnet: 10.0.5.0/24
-          gateway: 10.0.5.1
+        - subnet: 10.0.6.0/24
+          gateway: 10.0.6.1
 
 volumes:
   ollama_data:
@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
     networks:
       macvlan_18:
-        ipv4_address: 10.0.5.25
+        ipv4_address: 10.0.6.25
     volumes:
       - ollama_data:/root/.ollama
     environment:

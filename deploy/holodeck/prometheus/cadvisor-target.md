@@ -7,7 +7,7 @@ by host — it just needs holodeck as a target.
 > cAdvisor runs on **8081** (`CADVISOR_PORT` in generate.sh). Scraping 8080 would
 > hit AMP and return HTML, not metrics.
 
-On the Prometheus host (10.0.5.42), find the existing `cadvisor` job in
+On the Prometheus host (10.0.6.42), find the existing `cadvisor` job in
 `prometheus.yml` and add holodeck to it:
 
 ```yaml
@@ -21,7 +21,7 @@ On the Prometheus host (10.0.5.42), find the existing `cadvisor` job in
 Then reload:
 
 ```bash
-curl -X POST http://10.0.5.42:9090/-/reload
+curl -X POST http://10.0.6.42:9090/-/reload
 ```
 
 `generate.sh` already includes the cAdvisor container in the holodeck compose, so
@@ -31,6 +31,6 @@ Game Servers tab populates within ~15s.
 Verify:
 
 ```bash
-curl -sG 'http://10.0.5.42:9090/api/v1/query' \
+curl -sG 'http://10.0.6.42:9090/api/v1/query' \
   --data-urlencode 'query=count by (instance)(container_last_seen{job="cadvisor"})' | jq
 ```

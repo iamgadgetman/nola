@@ -7,13 +7,13 @@ const fsp     = require('fs').promises;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const PROMETHEUS_URL = process.env.PROMETHEUS_URL || 'http://10.0.5.42:9090';
-const GRAFANA_URL    = process.env.GRAFANA_URL    || 'http://10.0.5.31:3000';
+const PROMETHEUS_URL = process.env.PROMETHEUS_URL || 'http://10.0.6.42:9090';
+const GRAFANA_URL    = process.env.GRAFANA_URL    || 'http://10.0.6.31:3000';
 const GRAFANA_TOKEN  = process.env.GRAFANA_TOKEN  || '';
-const LIBRENMS_URL   = process.env.LIBRENMS_URL   || 'http://10.0.6.97:8000';
+const LIBRENMS_URL   = process.env.LIBRENMS_URL   || 'http://10.0.7.97:8000';
 const LIBRENMS_TOKEN = process.env.LIBRENMS_TOKEN || '';
 const INFLUXDB_DS_UID = process.env.INFLUXDB_DATASOURCE_UID || '';
-const INFLUXDB_URL   = process.env.INFLUXDB_URL   || 'http://10.0.5.39:8086';
+const INFLUXDB_URL   = process.env.INFLUXDB_URL   || 'http://10.0.6.39:8086';
 const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN;
 const INFLUXDB_ORG   = process.env.INFLUXDB_ORG   || 'galaxy-lab';
 const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || 'opnsense';
@@ -61,7 +61,7 @@ function netdataFwName(instance) {
 }
 
 // ─── LLM Config ─────────────────────────────────────────────────────────────
-const OLLAMA_URL    = process.env.OLLAMA_URL    || 'http://10.0.5.45:11434';
+const OLLAMA_URL    = process.env.OLLAMA_URL    || 'http://10.0.6.45:11434';
 const OLLAMA_MODEL  = process.env.OLLAMA_MODEL  || 'llama3.2:3b';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 // Set LLM_FALLBACK=false to disable Claude fallback and only use Ollama
@@ -91,7 +91,7 @@ const DB_NAMES = Object.fromEntries(
 
 // ─── Proxmox API Config ──────────────────────────────────────────────────────
 // PVE_API_TOKEN format: "root@pam!tokenid=<secret>"
-const PVE_API_URL   = process.env.PVE_API_URL   || 'https://10.0.3.32:8006';
+const PVE_API_URL   = process.env.PVE_API_URL   || 'https://10.0.4.32:8006';
 const PVE_API_TOKEN = process.env.PVE_API_TOKEN || '';
 // Node name as it appears in the Proxmox cluster (default: pve)
 const PVE_NODE      = process.env.PVE_NODE      || 'pve';
@@ -116,7 +116,7 @@ const AMP_PASSWORD  = process.env.AMP_PASSWORD || '';
 // Unraid Connect GraphQL API (the unraid-api service on the server). Feeds the
 // Unraid card: array status + capacity, per-disk/cache usage, and containers.
 // UNRAID_API_KEY is created on the server (Settings → Management Access → API keys).
-const UNRAID_URL     = process.env.UNRAID_URL     || 'http://10.0.6.19';
+const UNRAID_URL     = process.env.UNRAID_URL     || 'http://10.0.7.19';
 const UNRAID_API_KEY = process.env.UNRAID_API_KEY || '';
 const UNRAID_NAME    = process.env.UNRAID_NAME    || 'Unraid';
 
@@ -847,7 +847,7 @@ async function fetchTemperature() {
 }
 
 // ─── Kasa metered plugs (power) ──────────────────────────────────────────────
-// python-kasa exporter on union (10.0.5.73:9311) -> Prometheus job "kasa".
+// python-kasa exporter on union (10.0.6.73:9311) -> Prometheus job "kasa".
 // Only some plugs meter; kasa_power_watts simply won't exist for the others.
 async function fetchKasa() {
   const [watts, kwhToday, kwhMonth, amps, state] = await Promise.all([

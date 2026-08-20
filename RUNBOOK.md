@@ -81,7 +81,7 @@ The dashboard derives every host's up/down state from `up{job="node"}` in Promet
 If the **whole board goes red at once**, suspect the Prometheus container itself, not the
 hosts. Prometheus runs as the `prometheus` container on **union**.
 ```bash
-ssh gadget@10.0.3.20
+ssh gadget@10.0.4.20
 docker ps -a | grep prometheus            # is it Exited?
 cd ~/deploy/prometheus && docker compose up -d
 ```
@@ -122,7 +122,7 @@ falls through the notification policy — which is why it never paged.)
    ```bash
    NTOPNG_FORT_TOKEN=<token> python3 /home/gadget/apps/claude/netflow/ntopng_collector.py
    ```
-4. Check ntopng is reachable: `curl -H "Authorization: Token <token>" http://10.0.3.100:3005/lua/rest/v2/get/ntopng/interfaces.lua`
+4. Check ntopng is reachable: `curl -H "Authorization: Token <token>" http://10.0.4.100:3005/lua/rest/v2/get/ntopng/interfaces.lua`
 
 ### Collector errors with "URLError"
 - ntopng service may be down on the firewall
@@ -146,15 +146,15 @@ Always export the full current config, modify it, and POST the complete object.
 To apply WireGuard config changes:
 ```bash
 # 1. Export current config via API
-curl -u 'key:secret' https://10.0.3.100:5223/api/wireguard/server/getServer/<uuid>
+curl -u 'key:secret' https://10.0.4.100:5223/api/wireguard/server/getServer/<uuid>
 
 # 2. Modify the full JSON
 # 3. POST the complete object
-curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/wireguard/server/setServer/<uuid> \
+curl -u 'key:secret' -X POST https://10.0.4.100:5223/api/wireguard/server/setServer/<uuid> \
   -H 'Content-Type: application/json' -d @full_config.json
 
 # 4. Apply
-curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/wireguard/service/reconfigure
+curl -u 'key:secret' -X POST https://10.0.4.100:5223/api/wireguard/service/reconfigure
 ```
 
 ---
@@ -169,19 +169,19 @@ curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/wireguard/service/recon
 ### DNS change not resolving
 After adding/modifying Unbound host overrides:
 ```bash
-curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/unbound/service/reconfigure
+curl -u 'key:secret' -X POST https://10.0.4.100:5223/api/unbound/service/reconfigure
 ```
 This is required — changes don't apply until reconfigure is called.
 
 ### Adding a DNS record
 ```bash
 # 1. Add host override
-curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/unbound/settings/addHostOverride \
+curl -u 'key:secret' -X POST https://10.0.4.100:5223/api/unbound/settings/addHostOverride \
   -H 'Content-Type: application/json' \
-  -d '{"host": {"hostname": "newhost", "domain": "example.com", "server": "10.0.2.x"}}'
+  -d '{"host": {"hostname": "newhost", "domain": "example.com", "server": "10.0.3.x"}}'
 
 # 2. Apply
-curl -u 'key:secret' -X POST https://10.0.3.100:5223/api/unbound/service/reconfigure
+curl -u 'key:secret' -X POST https://10.0.4.100:5223/api/unbound/service/reconfigure
 ```
 
 ---
@@ -235,24 +235,24 @@ The dashboard is a Node.js/Express app that aggregates Prometheus, Grafana alert
 InfluxDB WAN traffic, and the Proxmox API into a single read-only view.
 
 **Source:** `dashboard/` in this repo  
-**Live container:** `nola-dashboard` on **union** (SSH host `10.0.3.20`)  
+**Live container:** `nola-dashboard` on **union** (SSH host `10.0.4.20`)  
 **Live URL:** https://nola.example.com  
-**Container IP:** `10.0.5.43:3000` — on the `18_Net` macvlan. NOTE: the union host
+**Container IP:** `10.0.6.43:3000` — on the `18_Net` macvlan. NOTE: the union host
 itself **cannot** reach this IP; query the dashboard via `docker exec nola-dashboard
 wget -qO- http://127.0.0.1:3000/...` or from another 18_Net container.
 
-> Migrated from the now-dead `containy` host to `union` in 2026. All `10.0.2.x` /
+> Migrated from the now-dead `containy` host to `union` in 2026. All `10.0.3.x` /
 > `~/apps/nola-dashboard` references elsewhere in older docs are obsolete.
 
 ### Redeploy after code changes
 
 ```bash
 # From this machine — sync server.js then rebuild on union
-scp dashboard/server.js gadget@10.0.3.20:~/nola/dashboard/server.js
+scp dashboard/server.js gadget@10.0.4.20:~/nola/dashboard/server.js
 # public assets, if changed:
-#   scp -r dashboard/public/* gadget@10.0.3.20:~/nola/dashboard/public/
+#   scp -r dashboard/public/* gadget@10.0.4.20:~/nola/dashboard/public/
 
-ssh gadget@10.0.3.20
+ssh gadget@10.0.4.20
 cd ~/nola/dashboard
 docker compose build --no-cache
 docker compose up -d
@@ -261,19 +261,19 @@ docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/health   # verify
 
 ### Configuration (live .env on union)
 
-`~/nola/dashboard/.env` on union (`10.0.3.20`). Key vars:
+`~/nola/dashboard/.env` on union (`10.0.4.20`). Key vars:
 
 | Var | Purpose |
 |-----|---------|
-| `PROMETHEUS_URL` | `http://10.0.5.42:9090` |
-| `GRAFANA_URL` / `GRAFANA_TOKEN` | Grafana unified alerting (`http://10.0.5.31:3000`) |
+| `PROMETHEUS_URL` | `http://10.0.6.42:9090` |
+| `GRAFANA_URL` / `GRAFANA_TOKEN` | Grafana unified alerting (`http://10.0.6.31:3000`) |
 | `INFLUXDB_URL` / `INFLUXDB_TOKEN` | OPNsense WAN traffic via InfluxDB |
 | `LINUX_HOSTS` | Comma-separated Prometheus instance labels for Linux hosts |
 | `FW_HOSTS` | OPNsense firewall labels (orange FW badge) |
 | `PVE_HOSTS` | Proxmox hypervisor labels (orange PVE badge, default: `pve`) |
-| `PVE_API_URL` | `https://10.0.3.32:8006` |
+| `PVE_API_URL` | `https://10.0.4.32:8006` |
 | `PVE_API_TOKEN` | `root@pam!nola=<secret>` — see Proxmox token below |
-| `AMP_URL` / `AMP_USERNAME` / `AMP_PASSWORD` | AMP game-server panel (`http://10.0.6.21:8080`) |
+| `AMP_URL` / `AMP_USERNAME` / `AMP_PASSWORD` | AMP game-server panel (`http://10.0.7.21:8080`) |
 | `OLLAMA_URL` | Primary LLM for Ask NOLA |
 | `ANTHROPIC_API_KEY` | Fallback LLM if Ollama is unreachable |
 | `AUTH_ENABLED` | Set `true` + configure OAuth2 proxy to enable auth |
@@ -281,7 +281,7 @@ docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/health   # verify
 ### Dashboard not loading / blank page
 
 ```bash
-ssh gadget@10.0.3.20
+ssh gadget@10.0.4.20
 docker logs nola-dashboard --tail 30
 docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/health
 ```
@@ -290,13 +290,13 @@ docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/health
 
 The Proxmox API call is failing. Most likely causes:
 1. Token expired or revoked → recreate at Proxmox → Datacenter → Permissions → API Tokens
-2. Network unreachable → `curl -k https://10.0.3.32:8006/api2/json/version`
+2. Network unreachable → `curl -k https://10.0.4.32:8006/api2/json/version`
 3. Token format wrong → must be `root@pam!nola=<uuid>` (note the `!`)
 
 Test the token directly:
 ```bash
 curl -sk -H "Authorization: PVEAPIToken=root@pam!nola=<secret>" \
-  https://10.0.3.32:8006/api2/json/nodes/pve/status | python3 -m json.tool
+  https://10.0.4.32:8006/api2/json/nodes/pve/status | python3 -m json.tool
 ```
 
 ### Adding a new host to the dashboard
@@ -325,7 +325,7 @@ Currently deployed cAdvisor hosts (image `gcr.io/cadvisor/cadvisor:v0.49.1`, sta
 
 | Host | Scrape target | Note |
 |------|---------------|------|
-| union  | `10.0.5.48:8080` | Docker host on 18_Net |
+| union  | `10.0.6.48:8080` | Docker host on 18_Net |
 | eagle  | `10.0.1.8:8080`   | birdies swarm cluster |
 | falcon | `10.0.1.9:8080`   | birdies swarm cluster |
 | talon  | `10.0.1.10:8082`  | host port **8082** — `:8080` is taken by swarm Traefik |
@@ -344,7 +344,7 @@ To add a cAdvisor host:
 Diagnose a missing host:
 ```bash
 # scrape health for all cAdvisor targets
-docker exec nola-dashboard wget -qO- 'http://10.0.5.42:9090/api/v1/query?query=up%7Bjob%3D%22cadvisor%22%7D'
+docker exec nola-dashboard wget -qO- 'http://10.0.6.42:9090/api/v1/query?query=up%7Bjob%3D%22cadvisor%22%7D'
 # what the dashboard actually returns, grouped by host
 docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/data   # see containers.by_host
 ```
@@ -393,8 +393,8 @@ docker exec nola-dashboard wget -qO- http://127.0.0.1:3000/api/data | python3 -m
 
 | Host | IP | Role | SSH user |
 |------|----|------|----------|
-| pve | `10.0.3.32` | Proxmox VE 9.1.1 hypervisor | `root` (password auth) |
-| union | `10.0.3.8` | VM on pve (VMID 100), Ubuntu 24.04 | `gadget` |
+| pve | `10.0.4.32` | Proxmox VE 9.1.1 hypervisor | `root` (password auth) |
+| union | `10.0.4.8` | VM on pve (VMID 100), Ubuntu 24.04 | `gadget` |
 
 **Note on PVE RAM:** Proxmox reports ~84% RAM used. This is expected — KVM pre-commits
 the full 26 GB allocated to union on VM start. `MemAvailable` on the host is ~5 GB and
@@ -410,19 +410,19 @@ Secret stored in: `~/nola/dashboard/.env` on union as `PVE_API_TOKEN`
 To regenerate if lost:
 ```bash
 # Auth with password to get a ticket
-TICKET=$(curl -sk -X POST https://10.0.3.32:8006/api2/json/access/ticket \
+TICKET=$(curl -sk -X POST https://10.0.4.32:8006/api2/json/access/ticket \
   -d "username=root@pam&password=<password>" | python3 -c \
   "import json,sys; print(json.load(sys.stdin)['data']['ticket'])")
-CSRF=$(curl -sk -X POST https://10.0.3.32:8006/api2/json/access/ticket \
+CSRF=$(curl -sk -X POST https://10.0.4.32:8006/api2/json/access/ticket \
   -d "username=root@pam&password=<password>" | python3 -c \
   "import json,sys; print(json.load(sys.stdin)['data']['CSRFPreventionToken'])")
 
 # Delete old token (if it exists)
-curl -sk -X DELETE "https://10.0.3.32:8006/api2/json/access/users/root@pam/token/nola" \
+curl -sk -X DELETE "https://10.0.4.32:8006/api2/json/access/users/root@pam/token/nola" \
   -H "CSRFPreventionToken: $CSRF" -b "PVEAuthCookie=$TICKET"
 
 # Create new token
-curl -sk -X POST "https://10.0.3.32:8006/api2/json/access/users/root@pam/token/nola" \
+curl -sk -X POST "https://10.0.4.32:8006/api2/json/access/users/root@pam/token/nola" \
   -H "CSRFPreventionToken: $CSRF" -b "PVEAuthCookie=$TICKET" \
   -d "comment=NOLA dashboard monitoring&privsep=0"
 # → copy the "value" field from the response → update PVE_API_TOKEN in containy .env
@@ -459,15 +459,15 @@ sudo systemctl enable --now node_exporter
 
 ### Prometheus scrape config
 
-File: `/home/gadget/proxy-setup/prometheus/prometheus.yml` on containy (`10.0.2.11`)
+File: `/home/gadget/proxy-setup/prometheus/prometheus.yml` on containy (`10.0.3.11`)
 
 pve and union entries in the `node` job:
 ```yaml
-- targets: ['10.0.3.8:9100']
+- targets: ['10.0.4.8:9100']
   labels:
     instance: union
     host: union
-- targets: ['10.0.3.32:9100']
+- targets: ['10.0.4.32:9100']
   labels:
     instance: pve
     host: pve
@@ -475,8 +475,8 @@ pve and union entries in the `node` job:
 
 Reload after editing:
 ```bash
-ssh gadget@10.0.2.11 "docker kill -s SIGHUP containy-prometheus"
-# auto-reloads every 30s anyway; verify at http://10.0.2.69:9090/targets
+ssh gadget@10.0.3.11 "docker kill -s SIGHUP containy-prometheus"
+# auto-reloads every 30s anyway; verify at http://10.0.3.69:9090/targets
 ```
 
 ---
@@ -494,7 +494,7 @@ ssh gadget@10.0.2.11 "docker kill -s SIGHUP containy-prometheus"
 | Portainer (knox) | https://knox.example.com | Container management |
 | aivault | https://aivault.example.com | AI credentials vault |
 | Personal vault | https://vault.example.com | Personal credentials |
-| ntopng (fort) | http://10.0.3.100:3005 | Flow analysis |
-| OPNsense (stop) | https://10.0.3.100:5223 | Fort firewall API |
-| OPNsense (halt) | https://10.0.2.100:5223 | Hawk firewall API |
-| Proxmox | https://10.0.3.32:8006 | Hypervisor UI (root@pam) |
+| ntopng (fort) | http://10.0.4.100:3005 | Flow analysis |
+| OPNsense (stop) | https://10.0.4.100:5223 | Fort firewall API |
+| OPNsense (halt) | https://10.0.3.100:5223 | Hawk firewall API |
+| Proxmox | https://10.0.4.32:8006 | Hypervisor UI (root@pam) |

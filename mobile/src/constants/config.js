@@ -1,7 +1,7 @@
 // Static config — URLs/credentials are overridable in Settings
 // Service URL map for quick-launch links
 export const SERVICE_URLS = {
-  'Traefik - Fort':       'http://10.0.5.99:8080',
+  'Traefik - Fort':       'http://10.0.6.99:8080',
   'Mantrae':              'https://mantrae.example.com',
   'Authentik':            'https://auth.example.com',
   'Grafana':              'https://grafana.example.com',

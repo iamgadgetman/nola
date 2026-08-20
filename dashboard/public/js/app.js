@@ -2,8 +2,8 @@
 //  N.O.L.A. Dashboard — Main App
 // ═══════════════════════════════════════════════════════════
 
-const GRAFANA_BASE   = 'http://10.0.5.31:3000';
-const LIBRENMS_BASE  = 'http://10.0.6.97:8000';
+const GRAFANA_BASE   = 'http://10.0.6.31:3000';
+const LIBRENMS_BASE  = 'http://10.0.7.97:8000';
 const REFRESH_MS     = 30_000;
 const KIOSK_DURATIONS = [15000, 12000, 12000, 12000, 12000, 12000, 12000, 12000]; // ms per slide
 

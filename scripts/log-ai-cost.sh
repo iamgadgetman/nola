@@ -9,7 +9,7 @@
 #     | ./log-ai-cost.sh
 #
 # Required env vars:
-#   INFLUXDB_URL    — e.g. http://10.0.2.100:8086
+#   INFLUXDB_URL    — e.g. http://10.0.3.100:8086
 #   INFLUXDB_TOKEN  — write token
 #   INFLUXDB_ORG    — org name
 #   INFLUXDB_BUCKET — bucket name (e.g. nola)

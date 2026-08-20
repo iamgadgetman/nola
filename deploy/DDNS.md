@@ -8,8 +8,8 @@ Automatic public IP updates for firewall hostnames via `favonia/cloudflare-ddns`
 
 | Hostname | Site | Host | Public IP (at deploy) |
 |---|---|---|---|
-| `stop.example.com` | Hawk House | containy (10.0.2.11) | 97.94.232.123 |
-| `halt.example.com` | The Fort | union (10.0.3.8) | 174.31.10.213 |
+| `stop.example.com` | Hawk House | containy (10.0.3.11) | 97.94.232.123 |
+| `halt.example.com` | The Fort | union (10.0.4.8) | 174.31.10.213 |
 
 ---
 
@@ -46,14 +46,14 @@ docker compose --env-file .env up -d
 
 ```bash
 # containy — stop.example.com
-scp deploy/containy/docker-compose.ddns.yml gadget@10.0.2.11:~/deploy/ddns/docker-compose.yml
-scp deploy/containy/.env.ddns gadget@10.0.2.11:~/deploy/ddns/.env
-ssh gadget@10.0.2.11 "cd ~/deploy/ddns && docker compose --env-file .env up -d"
+scp deploy/containy/docker-compose.ddns.yml gadget@10.0.3.11:~/deploy/ddns/docker-compose.yml
+scp deploy/containy/.env.ddns gadget@10.0.3.11:~/deploy/ddns/.env
+ssh gadget@10.0.3.11 "cd ~/deploy/ddns && docker compose --env-file .env up -d"
 
 # union — halt.example.com
-scp deploy/union/docker-compose.ddns.yml gadget@10.0.3.8:~/deploy/ddns/docker-compose.yml
-scp deploy/union/.env.ddns gadget@10.0.3.8:~/deploy/ddns/.env
-ssh gadget@10.0.3.8 "cd ~/deploy/ddns && docker compose --env-file .env up -d"
+scp deploy/union/docker-compose.ddns.yml gadget@10.0.4.8:~/deploy/ddns/docker-compose.yml
+scp deploy/union/.env.ddns gadget@10.0.4.8:~/deploy/ddns/.env
+ssh gadget@10.0.4.8 "cd ~/deploy/ddns && docker compose --env-file .env up -d"
 ```
 
 ---

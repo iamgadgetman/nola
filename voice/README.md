@@ -5,7 +5,7 @@ Local Alexa-style voice assistant for the homelab. Say **"hola Nola"** to wake i
 ## Architecture
 
 ```
-NUC (NOLA-1 · 10.0.3.218)
+NUC (NOLA-1 · 10.0.4.218)
 ─────────────────────────────────────
 USB mic (local)
   │ raw int16 PCM @ 16 kHz
@@ -82,10 +82,10 @@ ELEVENLABS_VOICE_ID=pFZP5JQG7iQjIQuC4Bku   # Lily
 # OUTPUT_DEVICE=
 
 # Tools
-UPS_HOST=10.0.3.100
-NETDATA_HOSTS=containy:http://10.0.2.11:19999,...
-PROMETHEUS_URL=http://10.0.2.69:9090
-N8N_WEBHOOK_BASE_URL=http://10.0.2.11:5678
+UPS_HOST=10.0.4.100
+NETDATA_HOSTS=containy:http://10.0.3.11:19999,...
+PROMETHEUS_URL=http://10.0.3.69:9090
+N8N_WEBHOOK_BASE_URL=http://10.0.3.11:5678
 ```
 
 ---

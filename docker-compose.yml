@@ -60,7 +60,7 @@ services:
     networks:
       default: {}
       18_Net:
-        ipv4_address: 10.0.5.38
+        ipv4_address: 10.0.6.38
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +93,7 @@ services:
       - ollama_storage:/root/.ollama
     networks:
       18_Net:
-        ipv4_address: 10.0.5.45
+        ipv4_address: 10.0.6.45
     profiles:
       - local-ai
     deploy:

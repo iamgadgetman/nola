@@ -110,7 +110,7 @@ def _playback_server(port: int, output_device: int | None):
 # ── Mic capture + NUC stream ─────────────────────────────────────────────────
 
 def main():
-    nuc_host = os.getenv('NUC_HOST', '10.0.3.218')
+    nuc_host = os.getenv('NUC_HOST', '10.0.4.218')
     nuc_port = int(os.getenv('NUC_PORT', '8765'))
     playback_port = int(os.getenv('PLAYBACK_PORT', '8766'))
 

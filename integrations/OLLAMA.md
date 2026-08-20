@@ -5,8 +5,8 @@ Two instances — one per site — reachable from the VPS via WireGuard.
 
 | Host | IP | Network | Reaches via |
 |------|----|---------|-------------|
-| containy.galaxy | 10.0.2.25 | 11_Net / Hawk DMZ | wg0 |
-| knox.universe | 10.0.5.25 | 18_Net / Fort DMZ | wg1 |
+| containy.galaxy | 10.0.3.25 | 11_Net / Hawk DMZ | wg0 |
+| knox.universe | 10.0.6.25 | 18_Net / Fort DMZ | wg1 |
 
 Model: `llama3.2:3b` — ~2GB RAM, CPU-only (Intel iGPU not supported by Ollama)
 
@@ -17,8 +17,8 @@ Model: `llama3.2:3b` — ~2GB RAM, CPU-only (Intel iGPU not supported by Ollama)
 ### 1. Verify parent interface on each host
 
 ```bash
-ssh gadget@10.0.2.11 'ip link | grep -E "^[0-9]+:" | grep -v lo'
-ssh gadget@10.0.5.18 'ip link | grep -E "^[0-9]+:" | grep -v lo'
+ssh gadget@10.0.3.11 'ip link | grep -E "^[0-9]+:" | grep -v lo'
+ssh gadget@10.0.6.18 'ip link | grep -E "^[0-9]+:" | grep -v lo'
 ```
 
 Update `parent:` in each compose file if it's not `eno1`.
@@ -26,22 +26,22 @@ Update `parent:` in each compose file if it's not `eno1`.
 ### 2. Start Ollama on containy
 
 ```bash
-scp deploy/containy/docker-compose.ollama.yml gadget@10.0.2.11:~/
-ssh gadget@10.0.2.11 'docker compose -f docker-compose.ollama.yml up -d'
+scp deploy/containy/docker-compose.ollama.yml gadget@10.0.3.11:~/
+ssh gadget@10.0.3.11 'docker compose -f docker-compose.ollama.yml up -d'
 ```
 
 ### 3. Start Ollama on knox
 
 ```bash
-scp deploy/knox/docker-compose.ollama.yml gadget@10.0.5.18:~/
-ssh gadget@10.0.5.18 'docker compose -f docker-compose.ollama.yml up -d'
+scp deploy/knox/docker-compose.ollama.yml gadget@10.0.6.18:~/
+ssh gadget@10.0.6.18 'docker compose -f docker-compose.ollama.yml up -d'
 ```
 
 ### 4. Pull the model on both hosts
 
 ```bash
-ssh gadget@10.0.2.11 'docker exec ollama ollama pull llama3.2:3b'
-ssh gadget@10.0.5.18 'docker exec ollama ollama pull llama3.2:3b'
+ssh gadget@10.0.3.11 'docker exec ollama ollama pull llama3.2:3b'
+ssh gadget@10.0.6.18 'docker exec ollama ollama pull llama3.2:3b'
 ```
 
 First pull is ~2GB — takes a few minutes. Subsequent starts load from disk.
@@ -49,8 +49,8 @@ First pull is ~2GB — takes a few minutes. Subsequent starts load from disk.
 ### 5. Verify reachability from VPS
 
 ```bash
-curl http://10.0.2.25:11434/api/tags
-curl http://10.0.5.25:11434/api/tags
+curl http://10.0.3.25:11434/api/tags
+curl http://10.0.6.25:11434/api/tags
 ```
 
 Both should return JSON listing `llama3.2:3b`.
@@ -58,8 +58,8 @@ Both should return JSON listing `llama3.2:3b`.
 ### 6. Add env vars to `.env` on the VPS
 
 ```
-OLLAMA_URL_CONTAINY=http://10.0.2.25:11434
-OLLAMA_URL_KNOX=http://10.0.5.25:11434
+OLLAMA_URL_CONTAINY=http://10.0.3.25:11434
+OLLAMA_URL_KNOX=http://10.0.6.25:11434
 OLLAMA_MODEL=llama3.2:3b
 ```
 
@@ -96,8 +96,8 @@ To try a different model (e.g. `mistral:7b` if RAM allows):
 
 ```bash
 # Pull on both hosts
-ssh gadget@10.0.2.11 'docker exec ollama ollama pull mistral:7b'
-ssh gadget@10.0.5.18 'docker exec ollama ollama pull mistral:7b'
+ssh gadget@10.0.3.11 'docker exec ollama ollama pull mistral:7b'
+ssh gadget@10.0.6.18 'docker exec ollama ollama pull mistral:7b'
 ```
 
 Then update `OLLAMA_MODEL=mistral:7b` in `.env` and restart n8n.

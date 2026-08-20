@@ -170,7 +170,7 @@
     {
       "parameters": {
         "name": "query_netbox",
-        "description": "Search NetBox network inventory for devices, IP addresses, or prefixes. Use this when asked about what a specific IP is, what devices are on a subnet, or what role a host serves. Pass an IP (e.g. 10.0.2.74), a hostname fragment (e.g. containy), or a subnet (e.g. 10.0.2.0/24).",
+        "description": "Search NetBox network inventory for devices, IP addresses, or prefixes. Use this when asked about what a specific IP is, what devices are on a subnet, or what role a host serves. Pass an IP (e.g. 10.0.3.74), a hostname fragment (e.g. containy), or a subnet (e.g. 10.0.3.0/24).",
         "parametersUi": {
           "parameter": [
             {

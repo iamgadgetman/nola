@@ -7,7 +7,7 @@ on the Game Servers tab show live data. Work happens in three places:
 |-------|-----------------|
 | **Each DB server** | create the read-only `nola_exporter` user (`sql/`) |
 | **holodeck** | cAdvisor + one mysqld_exporter per DB (generated compose) |
-| **Prometheus host** (10.0.5.42) | one cAdvisor target + one `mysql` scrape job |
+| **Prometheus host** (10.0.6.42) | one cAdvisor target + one `mysql` scrape job |
 
 Background/theory: [../holodeck-db-monitoring.md](../holodeck-db-monitoring.md).
 
@@ -49,7 +49,7 @@ Check an exporter locally on holodeck:
 curl -s localhost:9104/metrics | grep -m1 mysql_up   # -> mysql_up 1
 ```
 
-## 3. On the Prometheus host (10.0.5.42)
+## 3. On the Prometheus host (10.0.6.42)
 
 **Databases** — file-based targets so you never edit `prometheus.yml` again:
 
@@ -58,7 +58,7 @@ mkdir -p /etc/prometheus/holodeck
 scp holodeck:.../deploy/holodeck/prometheus/mysql-targets.generated.json \
     /etc/prometheus/holodeck/mysql-targets.json
 # add the job from prometheus/mysql-job.yml to scrape_configs:
-curl -X POST http://10.0.5.42:9090/-/reload
+curl -X POST http://10.0.6.42:9090/-/reload
 ```
 
 **Containers** — add holodeck to the existing cAdvisor job:
@@ -86,7 +86,7 @@ that DB's `server`/`instance` labels. See [grafana/](grafana/).
 
 ```bash
 # Prometheus sees the DBs (expect one series per DB, value 1):
-curl -sG 'http://10.0.5.42:9090/api/v1/query' \
+curl -sG 'http://10.0.6.42:9090/api/v1/query' \
   --data-urlencode 'query=mysql_up{job="mysql"}' | jq '.data.result[] | {server:.metric.server, up:.value[1]}'
 
 # The dashboard exposes them:
