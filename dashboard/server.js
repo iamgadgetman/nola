@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path    = require('path');
 const https   = require('https');
+const fsp     = require('fs').promises;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,18 @@ const WAN_INTERFACE  = process.env.WAN_INTERFACE  || 'em0';
 
 // Friendly UPS names, keyed by Prometheus `instance` label (job="ups").
 // halt = Fort firewall UPS, stop = Hawk House firewall UPS.
+// Electricity price for the Power page. 13.716 c/kWh = Avista Schedule 1
+// (residential WA) all-in rate for the 801-1500 kWh block, effective 2025-11-01 --
+// the marginal tier the lab's incremental load actually bills at. The $10/mo basic
+// charge is fixed and deliberately excluded. Same value as Grafana /d/power-cost.
+const POWER_RATE_CENTS = parseFloat(process.env.POWER_RATE_CENTS || '13.716');
+
+// Plugs that sit DOWNSTREAM of another metered plug. Dilithium is fed from a UPS
+// whose own inlet is metered, so counting both double-counts it (~300 W). These are
+// still shown individually, just excluded from fleet totals.
+const POWER_DOWNSTREAM = (process.env.POWER_DOWNSTREAM || 'Dilithium')
+  .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+
 const UPS_DISPLAY_NAMES = {
   'halt-opnsense': 'Fort UPS',
   'stop-opnsense': 'Hawk UPS',
@@ -50,9 +63,17 @@ const FW_HOSTS    = (process.env.FW_HOSTS    || 'fort-opnsense,hawk-opnsense').s
 const FW_DISPLAY  = { 'fort-opnsense': 'fort', 'hawk-opnsense': 'hawk' };
 const PVE_HOSTS   = (process.env.PVE_HOSTS   || 'pve').split(',').map(h => h.trim());
 
-// Optional friendly names for MariaDB/MySQL exporter targets, so several DBs on
-// holodeck read as names instead of host:port. Format (comma-separated):
-//   "holodeck.fort.example.com:9104=Minecraft DB,holodeck.fort.example.com:9105=Rust DB"
+// SNMP-monitored NAS/servers surfaced from LibreNMS (which polls them via SNMP).
+// Format: "librenmsDeviceId|Friendly Name|Site" entries separated by ';'.
+// Fort OMV only for now (LibreNMS device_id 7); add the Hawk OMV here once healthy.
+const SNMP_SERVERS = (process.env.SNMP_SERVERS || '7|OMV|Fort')
+  .split(';').map(s => s.trim()).filter(Boolean)
+  .map(s => { const [id, name, site] = s.split('|'); return { id: (id||'').trim(), name: (name||'').trim(), site: (site||'').trim() }; })
+  .filter(s => s.id);
+
+// Optional friendly names for MariaDB/MySQL exporter targets (job="mysql"), keyed
+// by Prometheus `instance` label. The `server` label from Prometheus already
+// names each DB, so this is just an optional override.
 const DB_NAMES = Object.fromEntries(
   (process.env.DB_FRIENDLY_NAMES || '').split(',').filter(Boolean)
     .map(p => p.split('=').map(s => s.trim()))
@@ -89,6 +110,12 @@ const AMP_PASSWORD  = process.env.AMP_PASSWORD || '';
 const UNRAID_URL     = process.env.UNRAID_URL     || 'http://10.0.6.19';
 const UNRAID_API_KEY = process.env.UNRAID_API_KEY || '';
 const UNRAID_NAME    = process.env.UNRAID_NAME    || 'Unraid';
+
+// ─── Patch reports ───────────────────────────────────────────────────────────
+// homelab-patching writes reports/latest.json on the control host (union). The
+// directory is bind-mounted read-only into this container; see docker-compose.yml.
+const PATCH_REPORT_DIR = process.env.PATCH_REPORT_DIR || '/data/patching';
+
 
 app.use('/api', (req, res, next) => {
   if (process.env.AUTH_ENABLED !== 'true') return next();
@@ -169,7 +196,7 @@ function vectorToMap(results) {
 
 // ─── Data fetchers ──────────────────────────────────────────────────────────
 async function fetchPrometheus() {
-  const [upNode, upFw, cpu, ram, disk, dlBits, ulBits, bans, bootTime] = await Promise.all([
+  const [upNode, upFw, cpu, ram, disk, dlBits, ulBits, bootTime] = await Promise.all([
     promQuery('up{job="node"}'),
     promQuery('up{job="opnsense_node"}'),
     promQuery('100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle",job="node"}[5m])))'),
@@ -177,7 +204,6 @@ async function fetchPrometheus() {
     promQuery('(node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node"} - node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs",job="node"}) / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node"} * 100'),
     promQuery('speedtest_tracker_download_bits'),
     promQuery('speedtest_tracker_upload_bits'),
-    promQuery('sum(cs_active_decisions{action="ban"})'),
     promQuery('time() - node_boot_time_seconds{job="node"}'),
   ]);
 
@@ -248,9 +274,6 @@ async function fetchPrometheus() {
   return {
     hosts,
     speedtests,
-    crowdsec: {
-      active_bans: bans?.[0]?.value[1] ? parseInt(bans[0].value[1]) : 0,
-    },
   };
 }
 
@@ -361,6 +384,7 @@ function parseWanCsv(csv) {
 // ─── LLM helpers ────────────────────────────────────────────────────────────
 function buildLabContext(prom, alerts, pve, ups) {
   const lines = [];
+  lines.push('(Percentages below are percent USED, not percent free.)');
 
   if (prom?.hosts?.length) {
     const up   = prom.hosts.filter(h => h.up).length;
@@ -369,7 +393,7 @@ function buildLabContext(prom, alerts, pve, ups) {
     if (down.length) lines.push(`  Offline: ${down.map(h => h.name).join(', ')}`);
     for (const h of prom.hosts) {
       if (h.cpu_pct != null)
-        lines.push(`  ${h.name}: CPU ${h.cpu_pct}% | RAM ${h.ram_pct}% | Disk ${h.disk_pct}%`);
+        lines.push(`  ${h.name}: CPU ${h.cpu_pct}% used | RAM ${h.ram_pct}% used | Disk ${h.disk_pct}% used`);
     }
   }
 
@@ -379,8 +403,6 @@ function buildLabContext(prom, alerts, pve, ups) {
       lines.push(`Internet (${s.site}): ↓${s.download_mbps ?? '?'} Mbps ↑${s.upload_mbps ?? '?'} Mbps${isp}`);
     }
   }
-
-  lines.push(`CrowdSec active bans: ${prom?.crowdsec?.active_bans ?? '?'}`);
 
   if (pve) {
     const n = pve.node;
@@ -401,7 +423,14 @@ function buildLabContext(prom, alerts, pve, ups) {
 
   if (ups?.length) {
     for (const u of ups) {
-      lines.push(`UPS (${u.name}): ${u.status} | Battery ${u.charge_pct ?? '?'}% | Runtime ${u.time_left_m ?? '?'} min | Load ${u.load_pct ?? '?'}% | Line ${u.line_volts ?? '?'}V`);
+      // A UPS that has lost its monitoring link reports zero for every reading.
+      // Printed raw, "Battery 0%" reads as a dead battery, so say the readings
+      // are unavailable instead of handing the model zeros to interpret.
+      if (u.status === 'COMMLOST' || u.status === 'COMMBAD') {
+        lines.push(`UPS (${u.name}): ${u.status} - monitoring link down, readings unavailable. This means we cannot see the UPS, NOT that its battery is empty.`);
+      } else {
+        lines.push(`UPS (${u.name}): ${u.status} | Battery ${u.charge_pct ?? '?'}% charged | Runtime ${u.time_left_m ?? '?'} min remaining | Load ${u.load_pct ?? '?'}% | Line ${u.line_volts ?? '?'}V`);
+      }
     }
   }
 
@@ -507,8 +536,7 @@ async function fetchContainers() {
 }
 
 // MariaDB/MySQL performance via mysqld_exporter (job="mysql"). One target per DB;
-// results are keyed by the Prometheus `instance` label so several DBs on holodeck
-// each become a row. See deploy/holodeck-db-monitoring.md for exporter setup.
+// results keyed by the Prometheus `instance` label so each DB is its own row.
 async function fetchDatabases() {
   const [up, uptime, connected, maxConn, running, queries, slow, aborted, bpReads, bpReq] =
     await Promise.all([
@@ -540,7 +568,6 @@ async function fetchDatabases() {
     const inst = r.metric.instance;
     const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
     const reads = bprM[inst], req = bpqM[inst];
-    // Buffer-pool hit ratio: 1 - disk_reads / logical_read_requests (rate-based)
     const hitPct = (req != null && req > 0) ? round1((1 - reads / req) * 100) : null;
     const conn = conM[inst], max = maxM[inst];
     return {
@@ -640,18 +667,17 @@ async function fetchPostgres() {
     const name = DB_NAMES[inst] || r.metric.server || stripPort(inst);
     const conn = conM[inst], max = maxM[inst];
     const h = hM[inst], rd = rM[inst];
-    // Postgres cache-hit ratio: blocks served from shared buffers vs. read from disk
     const hitPct = (h != null && rd != null && (h + rd) > 0) ? round1((h / (h + rd)) * 100) : null;
     return {
       name,
       instance:        inst,
       up:              r.value[1] === '1',
-      uptime:          null,   // not exposed via multi-target probe
+      uptime:          null,
       connections:     conn != null ? Math.round(conn) : null,
       max_conn:        max  != null ? Math.round(max)  : null,
       conn_pct:        (conn != null && max) ? round1((conn / max) * 100) : null,
       threads_running: null,
-      qps:             round1(xM[inst]),   // transactions/sec
+      qps:             round1(xM[inst]),
       slow_qps:        null,
       aborted_qps:     null,
       buffer_hit_pct:  hitPct,
@@ -755,6 +781,159 @@ async function fetchUps() {
   upsList.sort((a, b) => (order[a.name] ?? 9) - (order[b.name] ?? 9) || a.name.localeCompare(b.name));
 
   return upsList;
+}
+
+// ─── Kasa metered plugs (power) ──────────────────────────────────────────────
+// python-kasa exporter on union (10.0.5.73:9311) -> Prometheus job "kasa".
+// Only some plugs meter; kasa_power_watts simply won't exist for the others.
+async function fetchKasa() {
+  const [watts, kwhToday, kwhMonth, amps, state] = await Promise.all([
+    promQuery('kasa_power_watts'),
+    promQuery('kasa_energy_kwh_today'),
+    promQuery('kasa_energy_kwh_month'),
+    promQuery('kasa_current_amps'),
+    promQuery('kasa_outlet_state'),
+  ]);
+
+  if (!watts?.length) return null;
+
+  // Keyed by the `device` label (the plug's Kasa alias, e.g. "Fort big UPS").
+  const byDevice = (results) => {
+    const m = {};
+    for (const r of (results || [])) {
+      const k = (r.metric.device || r.metric.outlet || '').trim();
+      if (k) m[k] = parseFloat(r.value[1]);
+    }
+    return m;
+  };
+  const todayMap = byDevice(kwhToday);
+  const monthMap = byDevice(kwhMonth);
+  const ampsMap  = byDevice(amps);
+  const stateMap = byDevice(state);
+
+  const r1 = (n) => (n == null || Number.isNaN(n)) ? null : Math.round(n * 10) / 10;
+
+  const plugs = watts.map(r => {
+    const dev = (r.metric.device || r.metric.outlet || 'unknown').trim();
+    return {
+      device:     dev,
+      ip:         r.metric.ip    || null,
+      model:      r.metric.model || null,
+      site:       r.metric.site  || null,
+      watts:      r1(parseFloat(r.value[1])),
+      kwh_today:  r1(todayMap[dev]),
+      kwh_month:  r1(monthMap[dev]),
+      amps:       ampsMap[dev] != null ? Math.round(ampsMap[dev] * 100) / 100 : null,
+      on:         stateMap[dev] != null ? stateMap[dev] === 1 : null,
+      // True = fed from another metered plug, so excluded from the totals below.
+      downstream: POWER_DOWNSTREAM.includes(dev.toLowerCase()),
+    };
+  }).sort((a, b) => (b.watts ?? 0) - (a.watts ?? 0));
+
+  const counted = plugs.filter(p => !p.downstream);
+  const sum = (arr, k) => arr.reduce((t, p) => t + (p[k] ?? 0), 0);
+
+  const totalW    = sum(counted, 'watts');
+  const kwhTodayT = sum(counted, 'kwh_today');
+  const kwhMonthT = sum(counted, 'kwh_month');
+  const rate      = POWER_RATE_CENTS / 100;          // cents -> dollars per kWh
+  const projMonth = (totalW / 1000) * 24 * 30;
+  const money     = (n) => Math.round(n * 100) / 100;
+
+  return {
+    rate_cents:       POWER_RATE_CENTS,
+    plugs,
+    excluded:         plugs.filter(p => p.downstream).map(p => p.device),
+    total_watts:      r1(totalW),
+    total_watts_raw:  r1(sum(plugs, 'watts')),
+    kwh_today:        r1(kwhTodayT),
+    kwh_month:        r1(kwhMonthT),
+    cost_today:       money(kwhTodayT * rate),
+    cost_month_todate: money(kwhMonthT * rate),
+    proj_month_kwh:   r1(projMonth),
+    proj_month_cost:  money(projMonth * rate),
+    proj_year_cost:   money((totalW / 1000) * 24 * 365 * rate),
+  };
+}
+
+// ─── LibreNMS (SNMP) ─────────────────────────────────────────────────────────
+// LibreNMS polls the OMV NAS boxes via SNMP already; we just read its API so
+// NOLA doesn't need a second SNMP poller. Returns null on any auth/network fail.
+async function librenmsGet(path) {
+  if (!LIBRENMS_TOKEN) return null;
+  try {
+    const res = await withTimeout(fetch(`${LIBRENMS_URL}/api/v0${path}`, {
+      headers: { 'X-Auth-Token': LIBRENMS_TOKEN },
+    }), 8000);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+// Compact health card for each SNMP-monitored server: status/uptime + CPU
+// (avg processor usage), RAM (physical mempool), and its largest data volume.
+async function fetchServers() {
+  const out = await Promise.all(SNMP_SERVERS.map(async (cfg) => {
+    const dev = await librenmsGet(`/devices/${cfg.id}`);
+    const d = dev?.devices?.[0];
+    if (!d) return null;
+
+    // CPU: average processor_usage across every processor sensor.
+    let cpu_pct = null;
+    const procList = await librenmsGet(`/devices/${cfg.id}/health/processor`);
+    const procIds = (procList?.graphs || []).map(g => g.sensor_id);
+    if (procIds.length) {
+      const procs = await Promise.all(procIds.map(id =>
+        librenmsGet(`/devices/${cfg.id}/health/processor/${id}`)));
+      const vals = procs.map(p => p?.graphs?.[0]?.processor_usage)
+        .filter(v => v != null && !isNaN(v));
+      if (vals.length) cpu_pct = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+
+    // RAM: the "Physical memory" mempool (fallback: first mempool sensor).
+    let ram = null;
+    const memList = await librenmsGet(`/devices/${cfg.id}/health/mempool`);
+    const memSensor = (memList?.graphs || []).find(g => /physical/i.test(g.desc || ''))
+                   || (memList?.graphs || [])[0];
+    if (memSensor) {
+      const m = await librenmsGet(`/devices/${cfg.id}/health/mempool/${memSensor.sensor_id}`);
+      const g = m?.graphs?.[0];
+      if (g) ram = { pct: Math.round(g.mempool_perc), used: g.mempool_used, total: g.mempool_total };
+    }
+
+    // Disk: largest real volume (skip tmpfs/pseudo mounts).
+    let disk = null;
+    const stList = await librenmsGet(`/devices/${cfg.id}/health/storage`);
+    const stIds = (stList?.graphs || [])
+      .filter(g => !/^\/(tmp|run|dev|proc|sys|boot)(\/|$)/.test(g.desc || ''))
+      .map(g => g.sensor_id);
+    if (stIds.length) {
+      const sts = await Promise.all(stIds.map(id =>
+        librenmsGet(`/devices/${cfg.id}/health/storage/${id}`)));
+      // Largest volume wins; on a tie prefer a friendly share path over OMV's
+      // raw /srv/dev-disk-by-* mount (both point at the same physical disk).
+      const rawMount = m => /^\/srv\/dev-disk/.test(m || '');
+      const vols = sts.map(s => s?.graphs?.[0]).filter(Boolean)
+        .sort((a, b) => (b.storage_size || 0) - (a.storage_size || 0)
+                     || (rawMount(a.storage_descr) - rawMount(b.storage_descr)));
+      const v = vols[0];
+      if (v) disk = { mount: v.storage_descr, pct: Math.round(v.storage_perc),
+                      used: v.storage_used, size: v.storage_size };
+    }
+
+    return {
+      name:    cfg.name || d.sysName || d.hostname,
+      site:    cfg.site || '',
+      status:  d.status ? 'UP' : 'DOWN',
+      uptime_s: d.uptime ?? null,
+      os:      d.hardware || d.os || '',
+      cpu_pct,
+      ram,
+      disk,
+    };
+  }));
+  const list = out.filter(Boolean);
+  return list.length ? list : null;
 }
 
 // Netdata-sourced firewall health. Netdata for both firewalls is already
@@ -966,17 +1145,19 @@ async function fetchUnraid() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, ctrResult, dbResult, netdataResult, redisResult, pgResult, unraidResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, powerResult, ctrResult, netdataResult, dbResult, redisResult, pgResult, serversResult, unraidResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
     fetchProxmox(),
     fetchUps(),
+    fetchKasa(),
     fetchContainers(),
-    fetchDatabases(),
     fetchNetdata(),
+    fetchDatabases(),
     fetchRedis(),
     fetchPostgres(),
+    fetchServers(),
     fetchUnraid(),
   ]);
 
@@ -985,11 +1166,13 @@ app.get('/api/data', async (req, res) => {
   const wan     = wanResult.status     === 'fulfilled' ? wanResult.value     : null;
   const pve     = pveResult.status     === 'fulfilled' ? pveResult.value     : null;
   const ups     = upsResult.status     === 'fulfilled' ? upsResult.value     : null;
+  const power   = powerResult.status   === 'fulfilled' ? powerResult.value   : null;
   const ctr     = ctrResult.status     === 'fulfilled' ? ctrResult.value     : null;
-  const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
+  const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
   const redisDbs = redisResult.status  === 'fulfilled' ? redisResult.value   : null;
   const pgDbs    = pgResult.status     === 'fulfilled' ? pgResult.value      : null;
+  const servers  = serversResult.status === 'fulfilled' ? serversResult.value : null;
   const unraid  = unraidResult.status  === 'fulfilled' ? unraidResult.value  : null;
 
   // MySQL/MariaDB + Redis + PostgreSQL share one databases view (each row carries `engine`)
@@ -1001,14 +1184,15 @@ app.get('/api/data', async (req, res) => {
     timestamp: new Date().toISOString(),
     hosts:      prom?.hosts      || [],
     speedtests: prom?.speedtests || [],
-    crowdsec:  prom?.crowdsec  || { active_bans: 0 },
     alerts,
     wan,
     pve,
     ups,
+    power,
     containers: ctr,
-    databases,
     netdata,
+    databases,
+    servers,
     unraid,
     errors: {
       prometheus:  prom   ? null : 'fetch failed',
@@ -1016,9 +1200,11 @@ app.get('/api/data', async (req, res) => {
       wan:         wan    ? null : 'unavailable',
       pve:         pve    ? null : 'unavailable',
       ups:         ups    ? null : 'unavailable',
+      power:       power  ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
-      databases:   databases ? null : 'unavailable',
       netdata:     netdata ? null : 'unavailable',
+      databases:   databases ? null : 'unavailable',
+      servers:     servers ? null : 'unavailable',
       unraid:      unraid ? null : 'unavailable',
     },
   });
@@ -1254,6 +1440,71 @@ app.post('/api/amp/action', express.json(), async (req, res) => {
   } catch (e) {
     ampState.session = null;
     res.status(502).json({ error: e.message });
+  }
+});
+
+// ─── Patch reports (homelab-patching) ───────────────────────────────────────
+// Read-only view of whatever the last `nola-patch` run wrote. The reports
+// directory is bind-mounted from the control host at PATCH_REPORT_DIR; if the
+// mount is missing the endpoint says so instead of 500ing, so the card can
+// render "no data" rather than an error.
+app.get('/api/patching', async (req, res) => {
+  try {
+    const raw = await fsp.readFile(path.join(PATCH_REPORT_DIR, 'latest.json'), 'utf8');
+    const d = JSON.parse(raw);
+    const s = d.summary || {};
+
+    // history.jsonl is one summary object per run, oldest first. It is optional:
+    // a fresh control host has latest.json before it has any history worth showing.
+    let history = [];
+    try {
+      const lines = (await fsp.readFile(path.join(PATCH_REPORT_DIR, 'history.jsonl'), 'utf8'))
+        .split('\n').filter(Boolean);
+      history = lines.slice(-10).map(l => { try { return JSON.parse(l); } catch { return null; } })
+        .filter(Boolean)
+        .map(h => ({
+          timestamp: h.timestamp, mode: h.mode,
+          pending: h.total_pending_packages ?? 0, security: h.total_security_packages ?? 0,
+          updated: h.updated ?? 0, rebooted: h.rebooted ?? 0,
+          failed: h.failed ?? 0, unreachable: h.unreachable ?? 0,
+        }))
+        .reverse();
+    } catch { /* no history yet */ }
+
+    const ts = s.timestamp ? Date.parse(s.timestamp) : null;
+    res.json({
+      ok: true,
+      timestamp: s.timestamp ?? null,
+      age_hours: ts ? +((Date.now() - ts) / 3.6e6).toFixed(1) : null,
+      mode: s.mode ?? null,
+      totals: {
+        hosts: s.total ?? 0,
+        pending_packages: s.total_pending_packages ?? 0,
+        security_packages: s.total_security_packages ?? 0,
+        reboot_pending: s.reboot_pending ?? 0,
+        updated: s.updated ?? 0,
+        rebooted: s.rebooted ?? 0,
+        failed: s.failed ?? 0,
+        unreachable: s.unreachable ?? 0,
+        clean: s.clean ?? 0,
+      },
+      hosts: (d.hosts || []).map(h => ({
+        host: h.host,
+        status: h.status ?? 'unknown',
+        os: h.os ?? null,
+        kernel: h.kernel_after ?? h.kernel_before ?? null,
+        pending: h.pending_count ?? 0,
+        security: h.security_count ?? 0,
+        reboot_required: !!h.reboot_required,
+        error: h.error ? String(h.error).slice(0, 300) : null,
+        packages: (h.pending || []).slice(0, 25),
+      })),
+      history,
+    });
+  } catch (e) {
+    // ENOENT = no run yet, or the reports volume is not mounted.
+    if (e.code === 'ENOENT') return res.json({ ok: false, error: 'no patch report yet', hosts: [], history: [] });
+    res.status(502).json({ ok: false, error: e.message, hosts: [], history: [] });
   }
 });
 

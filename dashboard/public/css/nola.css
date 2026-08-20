@@ -176,6 +176,36 @@ a { color: var(--accent); text-decoration: none; }
   box-shadow: var(--brand-glow-sm);
 }
 
+/* ─── Page nav ──────────────────────────────────────────── */
+.site-nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: var(--gap);
+  border-bottom: 1px solid var(--border);
+}
+.nav-link {
+  padding: 9px 18px;
+  margin-bottom: -1px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+.nav-link:hover { color: var(--text-dim); }
+.nav-link.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+/* ─── Pages ─────────────────────────────────────────────── */
+.page { display: none; }
+.page.active { display: block; }
+
 /* ─── Host strip ────────────────────────────────────────── */
 .host-strip {
   display: flex;
@@ -408,27 +438,6 @@ a { color: var(--accent); text-decoration: none; }
   font-size: 0.7rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
-}
-
-/* ─── CrowdSec card ─────────────────────────────────────── */
-.crowdsec-body {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.crowdsec-count {
-  font-family: var(--font-mono);
-  font-size: 3rem;
-  font-weight: 700;
-  color: var(--crit);
-  line-height: 1;
-}
-.crowdsec-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 /* ─── UPS card ──────────────────────────────────────────── */
@@ -1545,7 +1554,6 @@ a { color: var(--accent); text-decoration: none; }
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
-
 /* ─── Unraid Card ───────────────────────────────────────── */
 .nola-card__badge.ok { background: var(--ok-dim); color: var(--ok); }
 
@@ -1637,3 +1645,275 @@ a { color: var(--accent); text-decoration: none; }
 .unraid-ctr-total { color: var(--text); font-weight: 600; }
 .unraid-ctr-run  { color: var(--ok); }
 .unraid-ctr-stop { color: var(--text-muted); }
+
+/* ─── Patching card ─────────────────────────────────────── */
+.patch-section { margin-bottom: var(--gap); }
+.card-patch { border-top: 2px solid #7b7bff; }
+
+.patch-no-data {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.patch-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.patch-stat {
+  flex: 1 1 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.patch-stat-val {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.1;
+}
+.patch-stat-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Only a non-zero counter earns colour — a wall of green zeros reads as noise. */
+.patch-stat.warn { border-color: rgba(255,171,0,0.35); background: var(--warn-dim); }
+.patch-stat.warn .patch-stat-val { color: var(--warn); }
+.patch-stat.crit { border-color: rgba(255,45,85,0.35); background: var(--crit-dim); }
+.patch-stat.crit .patch-stat-val { color: var(--crit); }
+
+.patch-host-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 0 24px;
+}
+.patch-host-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.patch-host-row:last-child { border-bottom: none; }
+.patch-host-name {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.patch-host-os {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.patch-host-counts {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+.patch-host-counts .warn  { color: var(--warn); }
+.patch-host-counts .crit  { color: var(--crit); }
+.patch-host-counts .muted { color: var(--text-muted); }
+.patch-host-status {
+  font-size: 0.6rem;
+  font-family: var(--font-mono);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.patch-host-status.ok   { background: var(--ok-dim);   color: var(--ok); }
+.patch-host-status.warn { background: var(--warn-dim); color: var(--warn); }
+.patch-host-status.crit { background: var(--crit-dim); color: var(--crit); }
+
+.patch-hist {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.patch-hist-title {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.patch-hist-row {
+  display: grid;
+  grid-template-columns: 130px 60px 1fr;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+.patch-hist-mode { color: var(--text-dim); }
+
+/* Kiosk slides 4-6: unraid array, workloads, wan */
+.kperf-value.green  { color: var(--ok); text-shadow: 0 0 16px rgba(16,208,112,0.35); }
+.k-unraid-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 32px;
+  flex: 1;
+  overflow: hidden;
+  align-content: start;
+}
+.k-work-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  padding: 3px 0;
+}
+.k-work-row .k-work-host { color: var(--text-muted); margin-left: auto; }
+.k-work-none { color: var(--ok); font-size: 0.9rem; }
+
+/* ─── Power page ──────────────────────────────────────────────────────────── */
+.power-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.power-tile {
+  background: var(--bg-card-accent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.power-tile__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--brand);
+  line-height: 1.15;
+}
+.power-unit { font-size: .8rem; font-weight: 600; margin-left: 2px; opacity: .75; }
+.power-tile__label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-dim, #8899bb);
+  margin-top: 4px;
+}
+.power-tile__sub { font-size: .66rem; color: var(--text-dim, #8899bb); opacity: .8; margin-top: 2px; }
+
+.power-note {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--brand);
+  background: var(--brand-dim);
+  border-radius: 4px;
+  font-size: .72rem;
+  line-height: 1.45;
+  color: var(--text-dim, #8899bb);
+}
+
+.power-plugs { display: flex; flex-direction: column; gap: 12px; }
+.power-plug__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.power-plug__name { font-weight: 600; font-size: .86rem; }
+.power-plug__watts { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--brand); font-size: .86rem; }
+.power-plug__bar {
+  height: 6px;
+  background: var(--bg-card-accent);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 5px 0 4px;
+}
+.power-plug__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--brand));
+  border-radius: 3px;
+}
+.power-plug__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .68rem;
+  color: var(--text-dim, #8899bb);
+}
+/* Downstream of an already-metered plug: shown, but visibly not part of totals. */
+.power-plug.is-downstream { opacity: .58; }
+.power-plug.is-downstream .power-plug__fill { background: var(--border-bright); }
+.power-plug__tag {
+  font-size: .6rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border: 1px solid var(--border-bright);
+  border-radius: 3px;
+  padding: 0 5px;
+}
+
+/* ─── Kiosk: Power slide ──────────────────────────────────────────────────── */
+/* Sized for a 1080p wall TV read from across the room, not a desktop. */
+.kpower-block {
+  background: var(--bg-card-accent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 14px;
+  text-align: center;
+  flex: 1;
+}
+.kpower-value { font-size: 2.6rem; font-weight: 700; color: var(--brand); line-height: 1.1; }
+.kpower-unit  { font-size: 1.1rem; font-weight: 600; margin-left: 4px; opacity: .75; }
+.kpower-label {
+  font-size: .82rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-dim, #8899bb); margin-top: 6px;
+}
+.kpower-plug {
+  display: flex; align-items: center; gap: 14px;
+  padding: 7px 0; font-size: 1.05rem;
+}
+.kpower-plug-name  { width: 190px; font-weight: 600; }
+.kpower-plug-bar {
+  flex: 1; height: 10px; background: var(--bg-card-accent);
+  border-radius: 5px; overflow: hidden;
+}
+.kpower-plug-fill {
+  display: block; height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent), var(--brand));
+}
+.kpower-plug-watts {
+  width: 92px; text-align: right; font-weight: 700;
+  color: var(--brand); font-variant-numeric: tabular-nums;
+}
+.kpower-plug.is-downstream { opacity: .5; }
+.kpower-plug.is-downstream .kpower-plug-fill { background: var(--border-bright); }
+
+.ups-commlost {
+  font-size: .74rem; line-height: 1.5; color: var(--warn, #ffab00);
+  background: rgba(255, 171, 0, .08);
+  border-left: 2px solid var(--warn, #ffab00);
+  border-radius: 4px; padding: 7px 9px;
+}
+
+.kpower-ups { display: flex; gap: 18px; flex-wrap: wrap; }
+.kpower-ups-unit {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-card-accent); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 16px; font-size: 1.02rem;
+}
+.kpower-ups-name   { font-weight: 600; }
+.kpower-ups-status { font-size: .72rem; font-weight: 700; letter-spacing: .06em; }
+.kpower-ups-status.ok   { color: var(--ok, #10d070); }
+.kpower-ups-status.warn { color: var(--warn, #ffab00); }
+.kpower-ups-status.crit { color: var(--crit, #ff4757); }
+.kpower-ups-stat   { color: var(--text-dim, #8899bb); font-variant-numeric: tabular-nums; }
+.kpower-ups-note   { color: var(--warn, #ffab00); font-size: .86rem; }

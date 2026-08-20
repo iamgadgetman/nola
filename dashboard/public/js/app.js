@@ -5,7 +5,7 @@
 const GRAFANA_BASE   = 'http://10.0.5.31:3000';
 const LIBRENMS_BASE  = 'http://10.0.6.97:8000';
 const REFRESH_MS     = 30_000;
-const KIOSK_DURATIONS = [15000, 12000, 12000, 12000]; // ms per slide
+const KIOSK_DURATIONS = [15000, 12000, 12000, 12000, 12000, 12000, 12000, 12000]; // ms per slide
 
 let state       = null;
 let cpuChart    = null;
@@ -20,6 +20,7 @@ let progressDuration = 0;
 document.addEventListener('DOMContentLoaded', () => {
   startClock();
   initAsk();
+  initNav();
 
   // Check for ?kiosk param
   if (new URLSearchParams(window.location.search).has('kiosk')) {
@@ -35,6 +36,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'ArrowLeft'  && kioskActive) retreatKioskSlide();
   });
 });
+
+// ─── Page navigation ─────────────────────────────────────
+const PAGES = ['home', 'infra', 'storage', 'network', 'power', 'security'];
+
+function showPage(name) {
+  if (!PAGES.includes(name)) name = 'home';
+  document.querySelectorAll('.page').forEach(p =>
+    p.classList.toggle('active', p.id === 'page-' + name));
+  document.querySelectorAll('.nav-link').forEach(b =>
+    b.classList.toggle('active', b.dataset.page === name));
+  if (('#' + name) !== window.location.hash) {
+    history.replaceState(null, '', '#' + name);
+  }
+  // Charts built while their page was hidden have a 0-size canvas; fix on show.
+  requestAnimationFrame(() => {
+    if (name === 'infra')   cpuChart?.resize();
+    if (name === 'network') wanChart?.resize();
+  });
+}
+
+function initNav() {
+  document.querySelectorAll('.nav-link').forEach(btn =>
+    btn.addEventListener('click', () => showPage(btn.dataset.page)));
+  window.addEventListener('hashchange', () =>
+    showPage(window.location.hash.slice(1) || 'home'));
+  showPage(window.location.hash.slice(1) || 'home');
+}
 
 // ─── Clock ───────────────────────────────────────────────
 function startClock() {
@@ -61,6 +89,7 @@ async function loadData() {
     const history = histRes.ok ? await histRes.json() : null;
 
     renderDashboard(state);
+    loadPatching();          // own endpoint, own failure mode — never awaited here
     renderCpuChart(history);
     renderWanChart(state.wan);
     if (kioskActive) renderKiosk(state);
@@ -73,8 +102,9 @@ async function loadData() {
 function renderDashboard(d) {
   renderHosts(d.hosts);
   renderSpeedtests(d.speedtests);
-  renderCrowdsec(d.crowdsec);
   renderUps(d.ups);
+  renderPower(d.power);
+  renderServers(d.servers);
   renderNetdata(d.netdata);
   renderAlerts(d.alerts);
   renderProxmox(d.pve);
@@ -157,11 +187,72 @@ function renderSpeedtests(speedtests) {
   `).join('<div class="speed-divider"></div>');
 }
 
-function renderCrowdsec(cs) {
-  const el = document.getElementById('crowdsec-count');
-  el.textContent = cs?.active_bans ?? '—';
-  const val = cs?.active_bans ?? 0;
-  el.style.color = val > 500 ? 'var(--crit)' : val > 100 ? 'var(--warn)' : 'var(--ok)';
+// ─── Power page ──────────────────────────────────────────
+// Fleet totals deliberately EXCLUDE plugs marked `downstream` by the server:
+// Dilithium is fed from a UPS whose own inlet is metered, so counting both would
+// double-count it. Downstream plugs are still listed, just visually set apart.
+function renderPower(power) {
+  const sumBody   = document.getElementById('power-summary-body');
+  const rateBadge = document.getElementById('power-rate-badge');
+  const plugBody  = document.getElementById('power-plugs-body');
+  const plugBadge = document.getElementById('power-plugs-badge');
+  if (!sumBody) return; // page not present
+
+  if (!power || !power.plugs?.length) {
+    sumBody.innerHTML  = '<div class="ups-no-data">No power data</div>';
+    plugBody.innerHTML = '<div class="ups-no-data">No metered plugs</div>';
+    rateBadge.textContent = '—';
+    plugBadge.textContent = '—';
+    return;
+  }
+
+  rateBadge.textContent = `${power.rate_cents}¢/kWh`;
+
+  const money = n => (n == null ? '—' : `$${n.toFixed(2)}`);
+  const tile  = (label, value, sub) => `
+    <div class="power-tile">
+      <div class="power-tile__value">${value}</div>
+      <div class="power-tile__label">${label}</div>
+      ${sub ? `<div class="power-tile__sub">${sub}</div>` : ''}
+    </div>`;
+
+  sumBody.innerHTML = `
+    <div class="power-tiles">
+      ${tile('Drawing now', `${power.total_watts ?? '—'}<span class="power-unit">W</span>`)}
+      ${tile('Energy today', `${power.kwh_today ?? '—'}<span class="power-unit">kWh</span>`)}
+      ${tile('Cost today', money(power.cost_today))}
+      ${tile('Month to date', money(power.cost_month_todate))}
+      ${tile('Projected / mo', money(power.proj_month_cost), `${power.proj_month_kwh ?? '—'} kWh`)}
+      ${tile('Projected / yr', money(power.proj_year_cost))}
+    </div>
+    ${power.excluded?.length ? `<div class="power-note">
+      Totals exclude ${power.excluded.map(escHtml).join(', ')} — fed from an already-metered UPS,
+      so counting both would double-count. Raw sum of all plugs: ${power.total_watts_raw} W.
+    </div>` : ''}`;
+
+  const counted = power.plugs.filter(p => !p.downstream);
+  plugBadge.textContent = `${counted.length} metered`;
+
+  // Bar is scaled to the biggest plug so the smallest still reads.
+  const peak = Math.max(...power.plugs.map(p => p.watts ?? 0), 1);
+
+  plugBody.innerHTML = `<div class="power-plugs">` + power.plugs.map(p => {
+    const w   = p.watts ?? 0;
+    const pct = Math.max(2, Math.round((w / peak) * 100));
+    return `
+    <div class="power-plug${p.downstream ? ' is-downstream' : ''}">
+      <div class="power-plug__head">
+        <span class="power-plug__name">${escHtml(p.device)}</span>
+        <span class="power-plug__watts">${p.watts ?? '—'} W</span>
+      </div>
+      <div class="power-plug__bar"><div class="power-plug__fill" style="width:${pct}%"></div></div>
+      <div class="power-plug__meta">
+        <span>${p.kwh_today ?? '—'} kWh today</span>
+        <span>${p.model ? escHtml(p.model) : ''}${p.ip ? ' · ' + escHtml(p.ip) : ''}</span>
+        ${p.downstream ? '<span class="power-plug__tag">downstream</span>' : ''}
+      </div>
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 function renderUps(upsList) {
@@ -198,6 +289,19 @@ function renderUps(upsList) {
   body.innerHTML = upsList.map(u => {
     const chargePct = u.charge_pct ?? 0;
     const chargeCls = chargePct < 20 ? 'crit' : chargePct < 50 ? 'warn' : 'ok';
+    // A UPS that has lost its monitoring link reports zero for every reading.
+    // Say that plainly -- a bare 0% bar reads as a flat battery, which it is not.
+    if (u.status === 'COMMLOST') {
+      return `
+    <div class="ups-unit">
+      <div class="ups-unit-head">
+        <span class="ups-unit-name">${escHtml(u.name)}</span>
+        <span class="ups-unit-status crit">${escHtml(u.status)}</span>
+      </div>
+      <div class="ups-commlost">Monitoring link down &mdash; readings unavailable.
+        This does <strong>not</strong> mean the battery is empty.</div>
+    </div>`;
+    }
     return `
     <div class="ups-unit">
       <div class="ups-unit-head">
@@ -228,6 +332,71 @@ function renderUps(upsList) {
       ${u.model ? `<div class="ups-model">${escHtml(u.model)}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// SNMP-monitored servers (OMV NAS boxes), sourced from LibreNMS. Reuses the
+// UPS card's bar/stat styling for CPU / RAM / disk usage.
+function renderServers(list) {
+  const body  = document.getElementById('servers-body');
+  const badge = document.getElementById('servers-badge');
+  if (!body) return;
+  if (!list?.length) {
+    body.innerHTML = '<div class="ups-no-data">No SNMP server data</div>';
+    if (badge) { badge.textContent = '—'; badge.className = 'nola-card__badge'; }
+    return;
+  }
+
+  const down = list.filter(s => s.status !== 'UP');
+  if (badge) {
+    badge.textContent = down.length ? `${down.length} ⚠` : (list.length > 1 ? `${list.length} OK` : 'UP');
+    badge.className = 'nola-card__badge ' + (down.length ? 'crit' : 'ok');
+  }
+
+  const fmtBytes = b => {
+    if (b == null || isNaN(b)) return '—';
+    const u = ['B','KB','MB','GB','TB','PB']; let i = 0; b = Number(b);
+    while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+    return `${b >= 100 ? b.toFixed(0) : b.toFixed(1)} ${u[i]}`;
+  };
+  const fmtUptime = s => {
+    if (s == null) return '—';
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+    return d ? `${d}d ${h}h` : `${h}h`;
+  };
+  const barCls = p => p == null ? '' : p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'ok';
+  const bar = (label, pct, sub) => {
+    const p = pct == null ? 0 : pct;
+    return `
+      <div class="ups-charge-row">
+        <span class="ups-charge-label">${label}</span>
+        <div class="ups-bar-wrap">
+          <div class="ups-bar-fill ${barCls(pct)}" style="width:${p}%"></div>
+        </div>
+        <span class="ups-charge-val ${barCls(pct)}">${pct == null ? '—' : pct + '%'}${sub ? ` <small>${sub}</small>` : ''}</span>
+      </div>`;
+  };
+
+  body.innerHTML = list.map(s => `
+    <div class="ups-unit">
+      <div class="ups-unit-head">
+        <span class="ups-unit-name">${escHtml(s.name)}${s.site ? ` <small>${escHtml(s.site)}</small>` : ''}</span>
+        <span class="ups-unit-status ${s.status === 'UP' ? 'ok' : 'crit'}">${escHtml(s.status)}</span>
+      </div>
+      ${bar('CPU', s.cpu_pct, null)}
+      ${bar('RAM', s.ram?.pct, s.ram ? fmtBytes(s.ram.used) + ' / ' + fmtBytes(s.ram.total) : null)}
+      ${bar('Disk', s.disk?.pct, s.disk ? fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.size) : null)}
+      <div class="ups-stats-row">
+        <div class="ups-stat">
+          <span class="ups-stat-label">Uptime</span>
+          <span class="ups-stat-val">${fmtUptime(s.uptime_s)}</span>
+        </div>
+        <div class="ups-stat">
+          <span class="ups-stat-label">Volume</span>
+          <span class="ups-stat-val">${s.disk ? escHtml(s.disk.mount) : '—'}</span>
+        </div>
+      </div>
+      ${s.os ? `<div class="ups-model">${escHtml(s.os)}</div>` : ''}
+    </div>`).join('');
 }
 
 function renderNetdata(list) {
@@ -448,6 +617,119 @@ function renderContainers(ctr) {
   } else {
     body.innerHTML = `<div class="ctr-grid">${ctr.containers.map(renderContainerRow).join('')}</div>`;
   }
+}
+
+// ─── Patching Card ───────────────────────────────────────
+// Fed by /api/patching, which reads whatever the last homelab-patching run
+// wrote on the control host. Deliberately independent of /api/data: a stale or
+// missing patch report must never take the rest of the dashboard down with it.
+async function loadPatching() {
+  try {
+    const res = await fetch('/api/patching');
+    renderPatching(await res.json());
+  } catch (err) {
+    console.error('[nola] patch fetch error:', err);
+    renderPatching({ ok: false, error: 'unreachable' });
+  }
+}
+
+const PATCH_STATUS_CLS = {
+  'clean': 'ok',
+  'pending': 'warn',
+  'updated': 'ok',
+  'reboot-pending': 'warn',
+  'rebooted': 'ok',
+  'failed': 'crit',
+  'unreachable': 'crit',
+};
+
+function renderPatching(p) {
+  const body  = document.getElementById('patch-body');
+  const badge = document.getElementById('patch-run-badge');
+  const card  = document.getElementById('card-patch');
+  if (!body) return;
+
+  if (!p?.ok) {
+    body.innerHTML = `<div class="patch-no-data">${escHtml(p?.error || 'No patch report')}</div>`;
+    if (badge) { badge.textContent = '—'; badge.className = 'nola-card__badge patch-run-badge'; }
+    if (card)  card.style.opacity = '0.4';
+    return;
+  }
+  if (card) card.style.opacity = '';
+
+  const t = p.totals || {};
+  // A report older than 8 days means the weekly run stopped happening — that is
+  // the failure this card exists to make visible, so it colours the badge.
+  const stale = p.age_hours != null && p.age_hours > 192;
+  if (badge) {
+    badge.textContent = `${p.mode ?? 'run'} · ${fmtAge(p.age_hours)}`;
+    badge.className = 'nola-card__badge patch-run-badge ' + (stale ? 'crit' : 'ok');
+  }
+
+  const stat = (label, val, cls) =>
+    `<div class="patch-stat ${val ? cls : ''}">
+       <span class="patch-stat-val">${val}</span>
+       <span class="patch-stat-label">${label}</span>
+     </div>`;
+
+  const stats = `<div class="patch-stats">
+    ${stat('pending', t.pending_packages ?? 0, 'warn')}
+    ${stat('security', t.security_packages ?? 0, 'crit')}
+    ${stat('need reboot', t.reboot_pending ?? 0, 'warn')}
+    ${stat('unreachable', (t.unreachable ?? 0) + (t.failed ?? 0), 'crit')}
+    ${stat('hosts', t.hosts ?? 0, '')}
+  </div>`;
+
+  const rows = (p.hosts || []).map(h => {
+    const cls = PATCH_STATUS_CLS[h.status] || '';
+    // A host that dropped out has nothing but zeros to show, so show why it
+    // dropped out instead — the reason is the only useful thing about that row.
+    const counts = (h.status === 'unreachable' || h.status === 'failed')
+      ? `<span class="patch-host-counts muted">${escHtml(h.error ? shortErr(h.error) : 'no data')}</span>`
+      : `<span class="patch-host-counts">
+           <span class="${h.pending ? 'warn' : 'muted'}">${h.pending} pkg</span>
+           ${h.security ? `<span class="crit">${h.security} sec</span>` : ''}
+           ${h.reboot_required ? '<span class="warn">⟳ reboot</span>' : ''}
+         </span>`;
+    // Hovering a row lists what apt would actually pull in, so you can judge a
+    // 14-package host without opening the full report.
+    const tip = h.error ? ` title="${escHtml(h.error)}"`
+      : h.packages?.length ? ` title="${escHtml(h.packages.join(', '))}"` : '';
+    return `<div class="patch-host-row"${tip}>
+      <span class="patch-host-name">${escHtml(h.host)}</span>
+      <span class="patch-host-os">${escHtml(h.os || '')}</span>
+      ${counts}
+      <span class="patch-host-status ${cls}">${escHtml(h.status)}</span>
+    </div>`;
+  }).join('');
+
+  const hist = (p.history || []).slice(0, 5).map(r =>
+    `<div class="patch-hist-row">
+       <span class="patch-hist-time">${new Date(r.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+       <span class="patch-hist-mode">${escHtml(r.mode)}</span>
+       <span class="patch-hist-nums">${r.pending} pending · ${r.updated} updated${r.failed ? ` · ${r.failed} failed` : ''}</span>
+     </div>`).join('');
+
+  body.innerHTML = stats
+    + `<div class="patch-host-list">${rows || '<div class="patch-no-data">No hosts in report</div>'}</div>`
+    + (hist ? `<div class="patch-hist"><div class="patch-hist-title">Recent runs</div>${hist}</div>` : '');
+}
+
+// Ansible's messages are long and prefixed; the row has room for a phrase.
+// The full text stays in the row's title attribute.
+function shortErr(msg) {
+  const m = String(msg);
+  if (/sudo password/i.test(m)) return 'sudo not configured';
+  if (/Permission denied/i.test(m)) return 'ssh key rejected';
+  if (/Failed to connect|timed out|No route/i.test(m)) return 'no ssh';
+  return m.replace(/^Task failed:\s*/i, '').slice(0, 40);
+}
+
+function fmtAge(hours) {
+  if (hours == null) return 'unknown';
+  if (hours < 1) return `${Math.round(hours * 60)}m ago`;
+  if (hours < 48) return `${Math.round(hours)}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 // ─── Proxmox Card ────────────────────────────────────────
@@ -739,11 +1021,18 @@ function enterKioskMode() {
   kioskActive = true;
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('kiosk').style.display = 'flex';
-  kioskSlide = 0;
+
+  // ?kiosk&slide=N starts the rotation on a given slide. The NOC TV reloads this
+  // tab every cycle, so without this a late slide is only ever on screen for a
+  // second or two; a dedicated tab can point straight at the one it wants.
+  const want = parseInt(new URLSearchParams(location.search).get('slide'), 10);
+  const start = Number.isInteger(want) && want >= 0 && want < KIOSK_DURATIONS.length ? want : 0;
+
+  kioskSlide = start;
   if (state) renderKiosk(state);
-  activateSlide(0);
+  activateSlide(start);
   document.documentElement.style.cursor = 'none';
-  history.replaceState(null, '', '?kiosk');
+  history.replaceState(null, '', start ? `?kiosk&slide=${start}` : '?kiosk');
 }
 
 function exitKioskMode() {
@@ -822,6 +1111,70 @@ function renderKiosk(d) {
   renderKioskPerf(d);
   renderKioskAlerts(d.alerts);
   renderKioskPve(d.pve);
+  renderKioskUnraid(d.unraid);
+  renderKioskWorkloads(d);
+  renderKioskWan(d);
+  renderKioskPower(d);
+}
+
+// Power slide. Totals come from the server already excluding downstream plugs
+// (Dilithium is fed from a metered UPS), so this just presents them.
+function renderKioskPower(d) {
+  const blocks = document.getElementById('k-power-blocks');
+  const list   = document.getElementById('k-power-plugs');
+  if (!blocks || !list) return;
+
+  const power = d.power;
+  if (!power?.plugs?.length) {
+    blocks.innerHTML = '<div class="kslide-empty">No power data</div>';
+    list.innerHTML = '';
+    return;
+  }
+
+  const money = n => (n == null ? '—' : `$${n.toFixed(2)}`);
+  const block = (label, value, unit) => `
+    <div class="kpower-block">
+      <div class="kpower-value">${value}${unit ? `<span class="kpower-unit">${unit}</span>` : ''}</div>
+      <div class="kpower-label">${label}</div>
+    </div>`;
+
+  blocks.innerHTML =
+    block('Drawing now',    power.total_watts ?? '—', 'W') +
+    block('Energy today',   power.kwh_today ?? '—', 'kWh') +
+    block('Cost today',     money(power.cost_today)) +
+    block('Projected / mo', money(power.proj_month_cost)) +
+    block('Projected / yr', money(power.proj_year_cost));
+
+  const upsEl = document.getElementById('k-power-ups');
+  if (upsEl) {
+    const ups = d.ups || [];
+    upsEl.innerHTML = ups.length ? ups.map(u => {
+      const cls = u.status === 'ONLINE' ? 'ok' : u.status === 'ONBATT' ? 'warn' : 'crit';
+      // COMMLOST reports zeros for everything; don't render that as a flat battery.
+      const detail = u.status === 'COMMLOST'
+        ? '<span class="kpower-ups-note">monitoring link down</span>'
+        : `<span class="kpower-ups-stat">${u.charge_pct ?? '—'}%</span>
+           <span class="kpower-ups-stat">${u.load_pct != null ? u.load_pct + '% load' : '—'}</span>
+           <span class="kpower-ups-stat">${u.line_volts != null ? u.line_volts + 'V' : '—'}</span>`;
+      return `
+      <div class="kpower-ups-unit">
+        <span class="kpower-ups-name">${escHtml(u.name)}</span>
+        <span class="kpower-ups-status ${cls}">${escHtml(u.status || 'UNKNOWN')}</span>
+        ${detail}
+      </div>`;
+    }).join('') : '<div class="kslide-empty">No UPS data</div>';
+  }
+
+  const peak = Math.max(...power.plugs.map(p => p.watts ?? 0), 1);
+  list.innerHTML = power.plugs.map(p => {
+    const pct = Math.max(2, Math.round(((p.watts ?? 0) / peak) * 100));
+    return `
+    <div class="kpower-plug${p.downstream ? ' is-downstream' : ''}">
+      <span class="kpower-plug-name">${escHtml(p.device)}</span>
+      <span class="kpower-plug-bar"><span class="kpower-plug-fill" style="width:${pct}%"></span></span>
+      <span class="kpower-plug-watts">${p.watts ?? '—'} W</span>
+    </div>`;
+  }).join('');
 }
 
 function renderKioskHosts(hosts) {
@@ -882,7 +1235,6 @@ function renderKioskPerf(d) {
       </div>
     `).join('');
   }
-  document.getElementById('k-bans').textContent = d.crowdsec?.active_bans ?? '—';
 
   // Top resource consumers
   const topHosts = document.getElementById('k-top-hosts');
@@ -1055,3 +1407,116 @@ async function submitAsk() {
 }
 
 window.submitAsk = submitAsk;
+
+
+// ── Kiosk slide 4: Unraid array ──────────────────────────────────────────────
+function renderKioskUnraid(u) {
+  const stateEl = document.getElementById('k-unraid-state');
+  const sumEl   = document.getElementById('k-unraid-summary');
+  const disksEl = document.getElementById('k-unraid-disks');
+  if (!stateEl) return;
+
+  if (!u) {
+    stateEl.textContent = '—';
+    sumEl.textContent   = 'Unraid data unavailable';
+    disksEl.innerHTML   = '';
+    return;
+  }
+
+  stateEl.textContent = u.state ?? '—';
+  const c = u.capacity || {};
+  sumEl.innerHTML =
+    `<span>used <strong>${fmtBytes(c.used_bytes)}</strong></span>` +
+    `<span class="k-pve-sep">·</span>` +
+    `<span>free <strong>${fmtBytes(c.free_bytes)}</strong></span>` +
+    `<span class="k-pve-sep">·</span>` +
+    `<span>of <strong>${fmtBytes(c.total_bytes)}</strong></span>` +
+    `<span class="k-pve-sep">·</span>` +
+    `<span>up <strong>${escHtml(u.uptime ?? '—')}</strong></span>`;
+
+  // Reuse the main Unraid card's row markup so both views stay consistent.
+  disksEl.innerHTML = (u.mounts || []).map(unraidMountRow).join('');
+}
+
+// ── Kiosk slide 5: containers & databases ───────────────────────────────────
+function renderKioskWorkloads(d) {
+  const blocks = document.getElementById('k-work-blocks');
+  const ctrEl  = document.getElementById('k-work-containers');
+  const dbEl   = document.getElementById('k-work-dbs');
+  if (!blocks) return;
+
+  const ctrs    = d.containers?.containers || [];
+  const running = d.containers?.running ?? ctrs.length;
+  const hosts   = new Set(ctrs.map(c => c.host)).size;
+  const dbs     = d.databases || [];
+  const down    = dbs.filter(x => !x.up);
+
+  blocks.innerHTML = `
+    <div class="kperf-block">
+      <div class="kperf-label">📦 Containers</div>
+      <div class="kperf-value cyan">${running}</div>
+      <div class="kperf-unit">running · ${hosts} hosts</div>
+    </div>
+    <div class="kperf-block">
+      <div class="kperf-label">🗄 Databases</div>
+      <div class="kperf-value ${down.length ? 'red' : 'green'}">${dbs.length - down.length}/${dbs.length}</div>
+      <div class="kperf-unit">reachable</div>
+    </div>`;
+
+  const byCpu = [...ctrs].filter(c => c.cpu_pct != null).sort((a, b) => b.cpu_pct - a.cpu_pct);
+  ctrEl.innerHTML = byCpu.slice(0, 8).map(c =>
+    `<div class="k-work-row">
+       <span class="k-top-badge">${c.cpu_pct.toFixed(0)}%</span>
+       <span>${escHtml(c.name)}</span>
+       <span class="k-work-host">${escHtml(c.host)}</span>
+     </div>`).join('') || '<div class="k-work-none">No container data</div>';
+
+  dbEl.innerHTML = down.length
+    ? down.slice(0, 8).map(x =>
+        `<div class="k-work-row">
+           <span class="k-top-badge">${escHtml(x.engine || 'db')}</span>
+           <span>${escHtml(x.name)}</span>
+         </div>`).join('') +
+      (down.length > 8 ? `<div class="k-work-row"><span>+ ${down.length - 8} more</span></div>` : '')
+    : '<div class="k-work-none">✓ All databases reachable</div>';
+}
+
+// ── Kiosk slide 6: WAN throughput & SNMP servers ────────────────────────────
+function renderKioskWan(d) {
+  const blocks = document.getElementById('k-wan-blocks');
+  const srvEl  = document.getElementById('k-servers-list');
+  if (!blocks) return;
+
+  const series = d.wan?.series || [];
+  blocks.innerHTML = series.length
+    ? series.map(s => {
+        const last = (arr) => (arr && arr.length ? arr[arr.length - 1] : null);
+        const peak = (arr) => (arr && arr.length ? Math.max(...arr) : null);
+        const rx = last(s.rx_mbps), tx = last(s.tx_mbps);
+        return `
+          <div class="kperf-block">
+            <div class="kperf-label">↓ ${escHtml(s.host)} RX</div>
+            <div class="kperf-value cyan">${rx != null ? rx : '—'}</div>
+            <div class="kperf-unit">Mbps · peak ${peak(s.rx_mbps) ?? '—'}</div>
+          </div>
+          <div class="kperf-block">
+            <div class="kperf-label">↑ ${escHtml(s.host)} TX</div>
+            <div class="kperf-value purple">${tx != null ? tx : '—'}</div>
+            <div class="kperf-unit">Mbps · peak ${peak(s.tx_mbps) ?? '—'}</div>
+          </div>`;
+      }).join('')
+    : '<div class="k-work-none">No WAN data</div>';
+
+  // data.servers comes from LibreNMS and is null whenever that API is down.
+  const servers = Array.isArray(d.servers) ? d.servers : (d.servers?.devices || []);
+  srvEl.innerHTML = servers.length
+    ? servers.map(sv => {
+        const up = sv.up ?? sv.status;
+        return `<div class="k-work-row">
+          <span class="k-top-badge">${up ? 'UP' : 'DOWN'}</span>
+          <span>${escHtml(sv.name || sv.hostname || '—')}</span>
+          <span class="k-work-host">${escHtml(sv.site || sv.location || '')}</span>
+        </div>`;
+      }).join('')
+    : `<div class="k-work-row"><span>LibreNMS unavailable${d.errors?.servers ? ' (' + escHtml(d.errors.servers) + ')' : ''}</span></div>`;
+}
