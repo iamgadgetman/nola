@@ -6,7 +6,7 @@ Goal: surface **container performance** and **MariaDB/MySQL database performance
 Data path (matches everything else in NOLA):
 
 ```
-holodeck ──(cAdvisor / mysqld_exporter)──► Prometheus (10.0.5.42:9090)
+holodeck ──(cAdvisor / mysqld_exporter)──► Prometheus (10.0.6.42:9090)
                                               │
                             dashboard/server.js  /api/data
                                               │
@@ -38,7 +38,7 @@ not yet in place.
 
 ```bash
 # Is holodeck reporting containers?
-curl -sG 'http://10.0.5.42:9090/api/v1/query' \
+curl -sG 'http://10.0.6.42:9090/api/v1/query' \
   --data-urlencode 'query=count by (instance)(container_last_seen{job="cadvisor"})' | jq
 ```
 
@@ -71,7 +71,7 @@ services:
       - /dev/kmsg
 ```
 
-**3. Add a scrape target** to Prometheus (`prometheus.yml` on 10.0.5.42), matching
+**3. Add a scrape target** to Prometheus (`prometheus.yml` on 10.0.6.42), matching
 the existing `job="cadvisor"` so no server.js change is needed:
 
 ```yaml
@@ -82,7 +82,7 @@ the existing `job="cadvisor"` so no server.js change is needed:
 ```
 
 `docker compose up -d cadvisor` on holodeck, then reload Prometheus
-(`curl -X POST http://10.0.5.42:9090/-/reload` or SIGHUP). The **Holodeck
+(`curl -X POST http://10.0.6.42:9090/-/reload` or SIGHUP). The **Holodeck
 Containers** section on the Game Servers tab should populate within ~15s.
 
 > Note on the host label: `by_host` is keyed on Prometheus's `instance` label.
@@ -153,7 +153,7 @@ port = 3306
 Reload Prometheus. Verify:
 
 ```bash
-curl -sG 'http://10.0.5.42:9090/api/v1/query' \
+curl -sG 'http://10.0.6.42:9090/api/v1/query' \
   --data-urlencode 'query=mysql_up{job="mysql"}' | jq '.data.result'
 ```
 

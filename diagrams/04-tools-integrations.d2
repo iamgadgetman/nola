@@ -65,8 +65,8 @@ monitoring: Monitoring & Metrics {
     style.border-radius: 8
 
     nd_tool: "get_netdata_metrics\nget_cpu_ram" { class: tool }
-    nd_hawk: "hawk\n10.0.2.100:19999\n/api/v1/allmetrics" { class: endpoint }
-    nd_fort: "fort\n10.0.5.100:19999\n/api/v1/allmetrics" { class: endpoint }
+    nd_hawk: "hawk\n10.0.3.100:19999\n/api/v1/allmetrics" { class: endpoint }
+    nd_fort: "fort\n10.0.6.100:19999\n/api/v1/allmetrics" { class: endpoint }
     nd_data: "CPU % · RAM %\nNet in/out\nUptime string\nDisk I/O" { class: data }
 
     nd_tool -> nd_hawk
@@ -81,7 +81,7 @@ monitoring: Monitoring & Metrics {
     style.border-radius: 8
 
     prom_tool: "query_prometheus\nPromQL" { class: tool }
-    prom_ep: "10.0.2.69:9090\n/api/v1/query\n/api/v1/query_range" { class: endpoint }
+    prom_ep: "10.0.3.69:9090\n/api/v1/query\n/api/v1/query_range" { class: endpoint }
     prom_data: "Scraper job health\nCustom metrics\nTime-series ranges" { class: data }
 
     prom_tool -> prom_ep -> prom_data
@@ -93,7 +93,7 @@ monitoring: Monitoring & Metrics {
     style.border-radius: 8
 
     loki_tool: "query_loki\nLogQL" { class: tool }
-    loki_ep: "10.0.2.71:3100\n/loki/api/v1/query\n/loki/api/v1/query_range" { class: endpoint }
+    loki_ep: "10.0.3.71:3100\n/loki/api/v1/query\n/loki/api/v1/query_range" { class: endpoint }
     loki_data: "Log streams\nLabel filters\nTail N lines\nRegex search" { class: data }
 
     loki_tool -> loki_ep -> loki_data
@@ -115,7 +115,7 @@ network: Network Visibility {
     style.border-radius: 8
 
     ntp_tool: "get_traffic_stats\ninterface list" { class: tool }
-    ntp_ep: "10.0.3.100:3005\n/lua/rest/v2/get/\nntopng/interfaces\nToken auth header" { class: endpoint }
+    ntp_ep: "10.0.4.100:3005\n/lua/rest/v2/get/\nntopng/interfaces\nToken auth header" { class: endpoint }
     ntp_data: "Interfaces list\nbps in/out\nTop hosts\nActive flows" { class: data }
 
     ntp_tool -> ntp_ep -> ntp_data
@@ -171,7 +171,7 @@ execution: Remote Execution {
     style.border-radius: 8
 
     ssh_tool: "run_ssh_command\nget_disk_usage" { class: tool }
-    ssh_hosts: "hawk (10.0.2.100)\nknox (10.0.5.25)\npi (10.0.x.x)\nSSH key auth" { class: endpoint }
+    ssh_hosts: "hawk (10.0.3.100)\nknox (10.0.6.25)\npi (10.0.x.x)\nSSH key auth" { class: endpoint }
     ssh_data: "Arbitrary shell output\ndf -h results\nProcess lists\nService status" { class: data }
 
     ssh_tool -> ssh_hosts -> ssh_data

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>N.O.L.A. Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -34,185 +35,292 @@
     </div>
   </header>
 
-  <!-- Host status strip -->
-  <section class="host-strip" id="host-strip">
-    <div class="loading-placeholder">Loading hosts…</div>
-  </section>
+  <!-- Page navigation -->
+  <nav class="site-nav" id="site-nav">
+    <button class="nav-link active" data-page="home">Home</button>
+    <button class="nav-link" data-page="infra">Infra</button>
+    <button class="nav-link" data-page="storage">Storage</button>
+    <button class="nav-link" data-page="network">Network</button>
+    <button class="nav-link" data-page="power">Power</button>
+    <button class="nav-link" data-page="security">Security</button>
+  </nav>
 
-  <!-- Metrics grid -->
-  <main class="metrics-grid">
+  <!-- ═══════════ HOME ═══════════ -->
+  <div class="page active" id="page-home">
 
-    <!-- Internet Speed -->
-    <div class="nola-card card-speed" id="card-speed">
-      <div class="nola-card__header">
-        <span class="card-icon">⚡</span>
-        <span class="nola-card__title">Internet Speed</span>
-        <span class="nola-card__badge">fort + hawk</span>
-      </div>
-      <div class="nola-card__body speed-body">
-        <div id="speed-cards-container" class="speed-cards-container">
-          <div class="speed-no-data">Loading…</div>
+    <!-- Host status strip -->
+    <section class="host-strip" id="host-strip">
+      <div class="loading-placeholder">Loading hosts…</div>
+    </section>
+
+    <main class="metrics-grid">
+
+      <!-- Hawk House Temp (Geist WD15) -->
+      <div class="nola-card card-temp" id="card-temp">
+        <div class="nola-card__header">
+          <span class="card-icon">🌡️</span>
+          <span class="nola-card__title">Hawk House Temp</span>
+          <span class="nola-card__badge" id="temp-location-badge">Geist WD15</span>
         </div>
-      </div>
-    </div>
-
-    <!-- CrowdSec -->
-    <div class="nola-card card-crowdsec" id="card-crowdsec">
-      <div class="nola-card__header">
-        <span class="card-icon">🛡️</span>
-        <span class="nola-card__title">CrowdSec Bans</span>
-      </div>
-      <div class="nola-card__body crowdsec-body">
-        <span class="crowdsec-count" id="crowdsec-count">—</span>
-        <span class="crowdsec-label">active bans</span>
-      </div>
-    </div>
-
-    <!-- UPS -->
-    <div class="nola-card card-ups" id="card-ups">
-      <div class="nola-card__header">
-        <span class="card-icon">🔋</span>
-        <span class="nola-card__title">UPS</span>
-        <span class="nola-card__badge ups-status-badge" id="ups-status-badge">—</span>
-      </div>
-      <div class="nola-card__body ups-body" id="ups-body">
-        <div class="ups-loading">Loading…</div>
-      </div>
-    </div>
-
-    <!-- Firewalls (netdata) -->
-    <div class="nola-card card-netdata" id="card-netdata">
-      <div class="nola-card__header">
-        <span class="card-icon">🔥</span>
-        <span class="nola-card__title">Firewalls — netdata</span>
-        <span class="nola-card__badge" id="netdata-badge">—</span>
-      </div>
-      <div class="nola-card__body netdata-body" id="netdata-body">
-        <div class="ups-loading">Loading…</div>
-      </div>
-    </div>
-
-    <!-- Active Alerts -->
-    <div class="nola-card card-alerts" id="card-alerts">
-      <div class="nola-card__header">
-        <span class="card-icon">🔔</span>
-        <span class="nola-card__title">Active Alerts</span>
-        <span class="nola-card__badge" id="alert-count-badge">0</span>
-      </div>
-      <div class="nola-card__body alerts-body" id="alerts-list">
-        <div class="all-clear">
-          <span class="all-clear-icon">✓</span>
-          <span>All Clear</span>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- Proxmox card — full width below metrics grid -->
-  <section class="pve-section">
-    <div class="nola-card card-pve" id="card-pve">
-      <div class="nola-card__header">
-        <span class="card-icon">🖥️</span>
-        <span class="nola-card__title">Proxmox VE</span>
-        <span class="nola-card__badge pve-version-badge" id="pve-version-badge">—</span>
-      </div>
-      <div class="nola-card__body pve-body" id="pve-body">
-        <div class="pve-node-row" id="pve-node-row">
-          <span class="pve-node-stat" id="pve-node-cpu">CPU —</span>
-          <span class="pve-node-sep">·</span>
-          <span class="pve-node-stat" id="pve-node-mem">RAM —</span>
-          <span class="pve-node-sep">·</span>
-          <span class="pve-node-stat" id="pve-node-uptime">up —</span>
-        </div>
-        <div class="pve-columns">
-          <div class="pve-col pve-col-vms">
-            <div class="pve-col-title">Virtual Machines</div>
-            <div id="pve-vm-list"><div class="pve-loading">Loading…</div></div>
+        <div class="nola-card__body temp-body">
+          <div class="temp-main">
+            <span class="temp-value" id="temp-value">—</span>
+            <span class="temp-unit">°F</span>
           </div>
-          <div class="pve-col pve-col-storage">
-            <div class="pve-col-title">Storage</div>
-            <div id="pve-storage-list"><div class="pve-loading">Loading…</div></div>
+          <div class="temp-sub-row">
+            <span class="temp-sub-item"><span class="temp-sub-label">RH</span> <span id="temp-humidity">—</span>%</span>
+            <span class="temp-sub-item"><span class="temp-sub-label">DP</span> <span id="temp-dewpoint">—</span>°F</span>
           </div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- Unraid (array + storage + containers) -->
-  <section class="unraid-section">
-    <div class="nola-card card-unraid" id="card-unraid">
-      <div class="nola-card__header">
-        <span class="card-icon">🗄️</span>
-        <span class="nola-card__title">Unraid</span>
-        <span class="nola-card__badge" id="unraid-badge">—</span>
-      </div>
-      <div class="nola-card__body unraid-body" id="unraid-body">
-        <div class="loading-placeholder">Loading…</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Containers -->
-  <section class="containers-section">
-    <div class="nola-card card-containers" id="card-containers">
-      <div class="nola-card__header">
-        <span class="card-icon">🐋</span>
-        <span class="nola-card__title">Containers — union</span>
-        <span class="nola-card__badge" id="container-count-badge">—</span>
-      </div>
-      <div class="containers-body" id="containers-body">
-        <div class="loading-placeholder">Loading…</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Charts row -->
-  <section class="chart-section charts-row">
-
-    <div class="nola-card card-chart">
-      <div class="nola-card__header">
-        <span class="card-icon">📈</span>
-        <span class="nola-card__title">CPU Usage — Last 30 Minutes</span>
-        <span class="nola-card__badge">live</span>
-      </div>
-      <div class="chart-container">
-        <canvas id="cpu-chart"></canvas>
-      </div>
-    </div>
-
-    <div class="nola-card card-chart" id="card-wan">
-      <div class="nola-card__header">
-        <span class="card-icon">🌐</span>
-        <span class="nola-card__title">WAN Traffic — Last Hour</span>
-        <span class="nola-card__badge">fort + hawk</span>
-      </div>
-      <div class="chart-container">
-        <canvas id="wan-chart"></canvas>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- Ask NOLA -->
-  <section class="ask-section">
-    <div class="nola-card card-ask">
-      <div class="nola-card__header">
-        <span class="card-icon">🤖</span>
-        <span class="nola-card__title">Ask NOLA</span>
-        <span class="nola-card__badge ask-provider" id="ask-provider" style="display:none"></span>
-      </div>
-      <div class="nola-card__body ask-body">
-        <div class="ask-input-row">
-          <input type="text" id="ask-input" class="ask-input"
-            placeholder="What's wrong with containy? Why is RAM spiking?"
-            autocomplete="off" />
-          <button class="ask-btn" id="ask-btn" onclick="submitAsk()">Ask</button>
+      <!-- Internet Speed -->
+      <div class="nola-card card-speed" id="card-speed">
+        <div class="nola-card__header">
+          <span class="card-icon">⚡</span>
+          <span class="nola-card__title">Internet Speed</span>
+          <span class="nola-card__badge">fort + hawk</span>
         </div>
-        <div class="ask-response" id="ask-response"></div>
+        <div class="nola-card__body speed-body">
+          <div id="speed-cards-container" class="speed-cards-container">
+            <div class="speed-no-data">Loading…</div>
+          </div>
+        </div>
       </div>
-    </div>
-  </section>
+
+
+    </main>
+
+    <!-- Ask NOLA -->
+    <section class="ask-section">
+      <div class="nola-card card-ask">
+        <div class="nola-card__header">
+          <span class="card-icon">🤖</span>
+          <span class="nola-card__title">Ask NOLA</span>
+          <span class="nola-card__badge ask-provider" id="ask-provider" style="display:none"></span>
+        </div>
+        <div class="nola-card__body ask-body">
+          <div class="ask-input-row">
+            <input type="text" id="ask-input" class="ask-input"
+              placeholder="What's wrong with containy? Why is RAM spiking?"
+              autocomplete="off" />
+            <button class="ask-btn" id="ask-btn" onclick="submitAsk()">Ask</button>
+          </div>
+          <div class="ask-response" id="ask-response"></div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /#page-home -->
+
+  <!-- ═══════════ INFRA ═══════════ -->
+  <div class="page" id="page-infra">
+
+    <!-- Proxmox card -->
+    <section class="pve-section">
+      <div class="nola-card card-pve" id="card-pve">
+        <div class="nola-card__header">
+          <span class="card-icon">🖥️</span>
+          <span class="nola-card__title">Proxmox VE</span>
+          <span class="nola-card__badge pve-version-badge" id="pve-version-badge">—</span>
+        </div>
+        <div class="nola-card__body pve-body" id="pve-body">
+          <div class="pve-node-row" id="pve-node-row">
+            <span class="pve-node-stat" id="pve-node-cpu">CPU —</span>
+            <span class="pve-node-sep">·</span>
+            <span class="pve-node-stat" id="pve-node-mem">RAM —</span>
+            <span class="pve-node-sep">·</span>
+            <span class="pve-node-stat" id="pve-node-uptime">up —</span>
+          </div>
+          <div class="pve-columns">
+            <div class="pve-col pve-col-vms">
+              <div class="pve-col-title">Virtual Machines</div>
+              <div id="pve-vm-list"><div class="pve-loading">Loading…</div></div>
+            </div>
+            <div class="pve-col pve-col-storage">
+              <div class="pve-col-title">Storage</div>
+              <div id="pve-storage-list"><div class="pve-loading">Loading…</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Patching -->
+    <section class="patch-section">
+      <div class="nola-card card-patch" id="card-patch">
+        <div class="nola-card__header">
+          <span class="card-icon">🩹</span>
+          <span class="nola-card__title">Patching</span>
+          <span class="nola-card__badge patch-run-badge" id="patch-run-badge">—</span>
+        </div>
+        <div class="nola-card__body patch-body" id="patch-body">
+          <div class="loading-placeholder">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Containers -->
+    <section class="containers-section">
+      <div class="nola-card card-containers" id="card-containers">
+        <div class="nola-card__header">
+          <span class="card-icon">🐋</span>
+          <span class="nola-card__title">Containers — union</span>
+          <span class="nola-card__badge" id="container-count-badge">—</span>
+        </div>
+        <div class="containers-body" id="containers-body">
+          <div class="loading-placeholder">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CPU chart -->
+    <section class="chart-section">
+      <div class="nola-card card-chart">
+        <div class="nola-card__header">
+          <span class="card-icon">📈</span>
+          <span class="nola-card__title">CPU Usage — Last 30 Minutes</span>
+          <span class="nola-card__badge">live</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="cpu-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /#page-infra -->
+
+  <!-- ═══════════ STORAGE ═══════════ -->
+  <div class="page" id="page-storage">
+
+    <main class="metrics-grid">
+      <!-- Servers (SNMP via LibreNMS) -->
+      <div class="nola-card card-servers" id="card-servers">
+        <div class="nola-card__header">
+          <span class="card-icon">🗄️</span>
+          <span class="nola-card__title">NAS Servers</span>
+          <span class="nola-card__badge" id="servers-badge">—</span>
+        </div>
+        <div class="nola-card__body ups-body" id="servers-body">
+          <div class="ups-loading">Loading…</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Unraid (array + storage + containers) -->
+    <section class="unraid-section">
+      <div class="nola-card card-unraid" id="card-unraid">
+        <div class="nola-card__header">
+          <span class="card-icon">🗄️</span>
+          <span class="nola-card__title">Unraid</span>
+          <span class="nola-card__badge" id="unraid-badge">—</span>
+        </div>
+        <div class="nola-card__body unraid-body" id="unraid-body">
+          <div class="loading-placeholder">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /#page-storage -->
+
+  <!-- ═══════════ NETWORK ═══════════ -->
+  <div class="page" id="page-network">
+
+    <main class="metrics-grid">
+      <!-- Firewalls (netdata) -->
+      <div class="nola-card card-netdata" id="card-netdata">
+        <div class="nola-card__header">
+          <span class="card-icon">🔥</span>
+          <span class="nola-card__title">Firewalls — netdata</span>
+          <span class="nola-card__badge" id="netdata-badge">—</span>
+        </div>
+        <div class="nola-card__body netdata-body" id="netdata-body">
+          <div class="ups-loading">Loading…</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- WAN Traffic chart -->
+    <section class="chart-section">
+      <div class="nola-card card-chart" id="card-wan">
+        <div class="nola-card__header">
+          <span class="card-icon">🌐</span>
+          <span class="nola-card__title">WAN Traffic — Last Hour</span>
+          <span class="nola-card__badge">fort + hawk</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="wan-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /#page-network -->
+
+  <!-- ═══════════ SECURITY ═══════════ -->
+  <div class="page" id="page-security">
+
+    <main class="metrics-grid">
+      <!-- Active Alerts -->
+      <div class="nola-card card-alerts" id="card-alerts">
+        <div class="nola-card__header">
+          <span class="card-icon">🔔</span>
+          <span class="nola-card__title">Active Alerts</span>
+          <span class="nola-card__badge" id="alert-count-badge">0</span>
+        </div>
+        <div class="nola-card__body alerts-body" id="alerts-list">
+          <div class="all-clear">
+            <span class="all-clear-icon">✓</span>
+            <span>All Clear</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+  </div><!-- /#page-security -->
+
+  <div class="page" id="page-power">
+
+    <main class="metrics-grid">
+
+      <!-- Fleet summary -->
+      <div class="nola-card card-power-summary" id="card-power-summary">
+        <div class="nola-card__header">
+          <span class="card-icon">⚡</span>
+          <span class="nola-card__title">Power &amp; Cost</span>
+          <span class="nola-card__badge" id="power-rate-badge">—</span>
+        </div>
+        <div class="nola-card__body" id="power-summary-body">
+          <div class="loading-placeholder">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Per-plug breakdown -->
+      <div class="nola-card card-power-plugs" id="card-power-plugs">
+        <div class="nola-card__header">
+          <span class="card-icon">🔌</span>
+          <span class="nola-card__title">Metered Plugs</span>
+          <span class="nola-card__badge" id="power-plugs-badge">—</span>
+        </div>
+        <div class="nola-card__body" id="power-plugs-body">
+          <div class="loading-placeholder">Loading…</div>
+        </div>
+      </div>
+
+      <!-- UPS -->
+      <div class="nola-card card-ups" id="card-ups">
+        <div class="nola-card__header">
+          <span class="card-icon">🔋</span>
+          <span class="nola-card__title">UPS</span>
+          <span class="nola-card__badge ups-status-badge" id="ups-status-badge">—</span>
+        </div>
+        <div class="nola-card__body ups-body" id="ups-body">
+          <div class="ups-loading">Loading…</div>
+        </div>
+      </div>
+
+    </main>
+
+  </div><!-- /#page-power -->
 
   <footer class="site-footer">
     <span>N.O.L.A. v0.1.0</span>
@@ -231,6 +339,10 @@
     <button class="kiosk-dot" onclick="jumpKioskSlide(1)"></button>
     <button class="kiosk-dot" onclick="jumpKioskSlide(2)"></button>
     <button class="kiosk-dot" onclick="jumpKioskSlide(3)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(4)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(5)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(6)"></button>
+    <button class="kiosk-dot" onclick="jumpKioskSlide(7)"></button>
   </div>
 
   <!-- Exit hint -->
@@ -255,13 +367,6 @@
     </div>
     <div class="kslide-perf-grid" id="k-speed-blocks">
       <!-- populated by renderKioskPerf() -->
-    </div>
-    <div class="kslide-perf-grid kslide-perf-grid--bans">
-      <div class="kperf-block">
-        <div class="kperf-label">🛡 CrowdSec Bans</div>
-        <div class="kperf-value red" id="k-bans">—</div>
-        <div class="kperf-unit">active</div>
-      </div>
     </div>
     <div class="kslide-top-hosts" id="k-top-hosts"></div>
   </div>
@@ -301,6 +406,68 @@
           <div id="k-pve-storage"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+
+  <!-- ── Slide 4: Unraid Array ── -->
+  <div class="kiosk-slide" id="kslide-4">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">Unraid Array</div>
+      <div class="kslide-pve-version" id="k-unraid-state">—</div>
+    </div>
+    <div class="kslide-pve-body">
+      <div class="kslide-pve-node" id="k-unraid-summary">—</div>
+      <div class="k-unraid-grid" id="k-unraid-disks"></div>
+    </div>
+  </div>
+
+  <!-- ── Slide 5: Containers &amp; Databases ── -->
+  <div class="kiosk-slide" id="kslide-5">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">Containers &amp; Databases</div>
+    </div>
+    <div class="kslide-perf-grid" id="k-work-blocks"></div>
+    <div class="kslide-pve-body">
+      <div class="kslide-pve-cols">
+        <div class="kslide-pve-col">
+          <div class="kslide-pve-col-title">Busiest Containers</div>
+          <div id="k-work-containers"></div>
+        </div>
+        <div class="kslide-pve-col">
+          <div class="kslide-pve-col-title">Databases Offline</div>
+          <div id="k-work-dbs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 6: WAN &amp; Servers ── -->
+  <div class="kiosk-slide" id="kslide-6">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">WAN &amp; Servers</div>
+    </div>
+    <div class="kslide-perf-grid" id="k-wan-blocks"></div>
+    <div class="kslide-pve-body">
+      <div class="kslide-pve-col-title">SNMP Servers</div>
+      <div id="k-servers-list"></div>
+    </div>
+  </div>
+
+  <div class="kiosk-slide" id="kslide-7">
+    <div class="kslide-header">
+      <div class="kslide-brand">N.O.L.A.</div>
+      <div class="kslide-title">Power &amp; Cost</div>
+    </div>
+    <div class="kslide-perf-grid" id="k-power-blocks"></div>
+    <div class="kslide-pve-body">
+      <div class="kslide-pve-col-title">Metered Plugs</div>
+      <div id="k-power-plugs"></div>
+      <div class="kslide-pve-col-title" style="margin-top:22px">UPS</div>
+      <div class="kpower-ups" id="k-power-ups"></div>
     </div>
   </div>
 

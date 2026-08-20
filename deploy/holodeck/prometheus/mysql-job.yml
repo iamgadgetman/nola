@@ -1,12 +1,12 @@
 # Add this job to scrape_configs: in prometheus.yml on the Prometheus host
-# (10.0.5.42). It reads targets from a file, so you never touch prometheus.yml
+# (10.0.6.42). It reads targets from a file, so you never touch prometheus.yml
 # again when adding a DB — just refresh the targets file and reload.
 #
 #   1. mkdir -p /etc/prometheus/holodeck
 #   2. copy the generated prometheus/mysql-targets.generated.json to
 #      /etc/prometheus/holodeck/mysql-targets.json
 #   3. paste the block below under scrape_configs:
-#   4. reload:  curl -X POST http://10.0.5.42:9090/-/reload
+#   4. reload:  curl -X POST http://10.0.6.42:9090/-/reload
 #
 # The backend keys DB rows on the `instance` label (holodeck:<port>) and reads
 # the friendly name from the `server` label, which the targets file supplies.

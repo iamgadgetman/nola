@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOLA mic streamer setup — run on the Pi (NOLA-mic-1, 10.0.4.33)
+# NOLA mic streamer setup — run on the Pi (NOLA-mic-1, 10.0.5.33)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

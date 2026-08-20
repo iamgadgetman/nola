@@ -87,8 +87,8 @@ w1: nola — main workflow {
 
     t_netdata: "get_netdata_metrics\nHTTP → hawk:19999\nHTTP → fort:19999" { class: tool }
     t_ups: "get_ups_status\nHTTP → 10.0.0.x:3551\napcupsd NIS" { class: tool }
-    t_prometheus: "query_prometheus\nHTTP → 10.0.2.69:9090\nPromQL queries" { class: tool }
-    t_loki: "query_loki\nHTTP → 10.0.2.71:3100\nLogQL queries" { class: tool }
+    t_prometheus: "query_prometheus\nHTTP → 10.0.3.69:9090\nPromQL queries" { class: tool }
+    t_loki: "query_loki\nHTTP → 10.0.3.71:3100\nLogQL queries" { class: tool }
     t_traffic: "get_traffic_stats\nHTTP → ntopng:3005\ninterface stats" { class: tool }
     t_netbox: "query_netbox\nHTTP → netbox.example.com\nAPI token auth" { class: tool }
     t_ssh: "run_ssh_command\nSSH exec\nhawk / knox / pi" { class: tool }

@@ -16,7 +16,7 @@ import { MetricBar } from '../components/MiniChart';
 import { GRAFANA_DASHBOARDS } from '../constants/config';
 
 export default function NetworkScreen() {
-  const { hosts, ups, alerts, speedtests, crowdsec, pve, netdata, unraid, servers, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
+  const { hosts, alerts, speedtests, crowdsec, pve, netdata, unraid, servers, loading: ndLoading, lastUpdated: ndUpdated, refresh: ndRefresh } = useNetdata();
   const { interfaces, loading: ntLoading, lastUpdated: ntUpdated, refresh: ntRefresh } = useTraffic();
   const {
     patching,
@@ -115,19 +115,6 @@ export default function NetworkScreen() {
             <UnraidSection unraid={unraid} loading={ndLoading} />
           </>
         ) : null}
-
-        {/* ── Power / UPS (Prometheus) ── */}
-        <SectionHeader
-          title="Power"
-          icon="battery-charging-outline"
-          updated={fmt(ndUpdated)}
-          loading={ndLoading && ups.length === 0}
-        />
-        {ups.length === 0 ? (
-          !ndLoading ? <EmptyCard text="No UPS data — apcupsd exporter may be unavailable" /> : null
-        ) : (
-          ups.map((u, i) => <UpsCard key={u.name || i} ups={u} />)
-        )}
 
         {/* ── Firewall Health (netdata) ── */}
         {netdata && netdata.length > 0 ? (
@@ -343,50 +330,6 @@ function AlertCard({ alert }) {
   );
 }
 
-function UpsCard({ ups }) {
-  const online = ups.status === 'ONLINE';
-  const onBatt = ups.status === 'ONBATT';
-  const statusColor = online ? '#00d26a' : onBatt ? '#ff4757' : '#ffa502';
-  const charge = ups.charge_pct ?? 0;
-  const chargeColor = charge < 20 ? '#ff4757' : charge < 50 ? '#ffa502' : '#00d26a';
-  const runtime = ups.time_left_m != null
-    ? (ups.time_left_m >= 60 ? `${Math.floor(ups.time_left_m / 60)}h ${ups.time_left_m % 60}m` : `${ups.time_left_m}m`)
-    : '—';
-
-  return (
-    <View style={[styles.upsCard, { borderLeftColor: statusColor }]}>
-      <View style={styles.upsHeader}>
-        <View style={[styles.upsDot, { backgroundColor: statusColor }]} />
-        <Text style={styles.upsName} numberOfLines={1}>{ups.name}{ups.model ? ` · ${ups.model}` : ''}</Text>
-        <Text style={[styles.upsStatus, { color: statusColor }]}>{ups.status || 'UNKNOWN'}</Text>
-      </View>
-
-      <View style={styles.upsChargeRow}>
-        <Text style={styles.upsChargeLabel}>Battery</Text>
-        <View style={styles.upsBarBg}>
-          <View style={[styles.upsBarFill, { width: `${Math.min(charge, 100)}%`, backgroundColor: chargeColor }]} />
-        </View>
-        <Text style={[styles.upsChargeVal, { color: chargeColor }]}>{ups.charge_pct ?? '—'}%</Text>
-      </View>
-
-      <View style={styles.upsStats}>
-        <UpsStat label="Runtime" value={runtime} />
-        <UpsStat label="Load" value={ups.load_pct != null ? `${ups.load_pct}%` : '—'} />
-        <UpsStat label="Line" value={ups.line_volts != null ? `${ups.line_volts}V` : '—'} />
-      </View>
-    </View>
-  );
-}
-
-function UpsStat({ label, value }) {
-  return (
-    <View style={styles.upsStat}>
-      <Text style={styles.upsStatVal}>{value}</Text>
-      <Text style={styles.upsStatLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function SpeedtestCard({ s }) {
   return (
     <View style={styles.speedCard}>
@@ -570,23 +513,6 @@ const styles = StyleSheet.create({
   alertSummary: { color: '#aaa', fontSize: 12 },
   alertTime: { color: '#555', fontSize: 11, marginTop: 2 },
 
-  upsCard: {
-    backgroundColor: '#12122a', borderRadius: 12, padding: 14, gap: 10,
-    borderLeftWidth: 3,
-  },
-  upsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  upsDot: { width: 8, height: 8, borderRadius: 4 },
-  upsName: { flex: 1, color: '#e0e0e0', fontSize: 14, fontWeight: '600' },
-  upsStatus: { fontSize: 11, fontWeight: '700' },
-  upsChargeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  upsChargeLabel: { color: '#888', fontSize: 11, width: 48 },
-  upsBarBg: { flex: 1, height: 5, backgroundColor: '#2a2a3e', borderRadius: 3, overflow: 'hidden' },
-  upsBarFill: { height: '100%', borderRadius: 3 },
-  upsChargeVal: { fontSize: 12, fontWeight: '600', width: 42, textAlign: 'right' },
-  upsStats: { flexDirection: 'row', justifyContent: 'space-between' },
-  upsStat: { alignItems: 'center', flex: 1 },
-  upsStatVal: { color: '#cfcfe0', fontSize: 14, fontWeight: '700' },
-  upsStatLabel: { color: '#666', fontSize: 10, marginTop: 2 },
 
   speedRow: { flexDirection: 'row', gap: 8 },
   speedCard: {

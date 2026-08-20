@@ -6,7 +6,7 @@ services:
     env_file: .env
     networks:
       18_Net:
-        ipv4_address: 10.0.5.43
+        ipv4_address: 10.0.6.43
 
 networks:
   18_Net:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOLA voice interface setup — run on the NUC (NOLA-1, 10.0.3.218)
+# NOLA voice interface setup — run on the NUC (NOLA-1, 10.0.4.218)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
