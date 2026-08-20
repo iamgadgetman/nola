@@ -104,6 +104,7 @@ function renderDashboard(d) {
   renderSpeedtests(d.speedtests);
   renderUps(d.ups);
   renderPower(d.power);
+  renderTemperature(d.temperature);
   renderServers(d.servers);
   renderNetdata(d.netdata);
   renderAlerts(d.alerts);
@@ -185,6 +186,40 @@ function renderSpeedtests(speedtests) {
       </div>
     </div>
   `).join('<div class="speed-divider"></div>');
+}
+
+// Geist/Vertiv environmental sensor. Restored from the Aug-10 conflict copy;
+// renders em-dashes and dims the card whenever the sensor is unreachable.
+function renderTemperature(t) {
+  const valEl = document.getElementById('temp-value');
+  const humEl = document.getElementById('temp-humidity');
+  const dpEl  = document.getElementById('temp-dewpoint');
+  const card  = document.getElementById('card-temp');
+  if (!valEl) return;
+
+  if (!t || t.temp_f == null) {
+    valEl.textContent = '\u2014';
+    if (humEl) humEl.textContent = '\u2014';
+    if (dpEl)  dpEl.textContent  = '\u2014';
+    valEl.style.color = '';
+    if (card) card.style.opacity = '0.4';
+    return;
+  }
+  if (card) card.style.opacity = '';
+
+  valEl.textContent = t.temp_f.toFixed(1);
+  if (humEl) humEl.textContent = Math.round(t.humidity_pct ?? 0);
+  if (dpEl)  dpEl.textContent  = (t.dewpoint_f ?? 0).toFixed(1);
+
+  // Colour by proximity to the sensor's own alarm threshold.
+  const pct = t.temp_f / (t.alarm_threshold_f || 90);
+  valEl.style.color = pct >= 1.0  ? 'var(--crit)'
+                    : pct >= 0.94 ? 'var(--warn)'
+                    : pct >= 0.88 ? 'var(--accent)'
+                    :               'var(--ok)';
+
+  const alarming = t.alarm_state && t.alarm_state !== 'none' && t.alarm_state !== 'clear';
+  if (card) card.style.borderColor = alarming ? 'var(--crit)' : '';
 }
 
 // ─── Power page ──────────────────────────────────────────

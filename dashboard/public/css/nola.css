@@ -1917,3 +1917,18 @@ a { color: var(--accent); text-decoration: none; }
 .kpower-ups-status.crit { color: var(--crit, #ff4757); }
 .kpower-ups-stat   { color: var(--text-dim, #8899bb); font-variant-numeric: tabular-nums; }
 .kpower-ups-note   { color: var(--warn, #ffab00); font-size: .86rem; }
+
+/* ─── Geist temperature card (restored from the Aug-10 conflict copy) ──────── */
+.temp-body { display: flex; flex-direction: column; gap: 8px; }
+.temp-main { display: flex; align-items: baseline; gap: 4px; line-height: 1; }
+.temp-value {
+  font-family: var(--font-mono); font-size: 3rem; font-weight: 700;
+  line-height: 1; color: var(--ok); transition: color 0.4s ease;
+}
+.temp-unit { font-family: var(--font-mono); font-size: 1.2rem; color: var(--text-muted); }
+.temp-sub-row { display: flex; gap: 16px; }
+.temp-sub-item { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-dim); }
+.temp-sub-label {
+  color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-right: 2px;
+}

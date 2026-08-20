@@ -26,6 +26,15 @@ const WAN_INTERFACE  = process.env.WAN_INTERFACE  || 'em0';
 // (residential WA) all-in rate for the 801-1500 kWh block, effective 2025-11-01 --
 // the marginal tier the lab's incremental load actually bills at. The $10/mo basic
 // charge is fixed and deliberately excluded. Same value as Grafana /d/power-cost.
+// ─── Geist/Vertiv environmental sensor ──────────────────────────────────────
+// Restored 2026-08-20: this feature was lost in an Aug-10 Syncthing conflict and
+// survived only in the conflict copy. The sensor is NOT answering at this address
+// (verified from union, dilithium and from eagle on its own subnet), so the card
+// degrades to em-dashes until GEIST_URL points somewhere live.
+const GEIST_URL  = process.env.GEIST_URL  || 'http://10.0.1.28';
+const GEIST_USER = process.env.GEIST_USER || 'gadget';
+const GEIST_PASS = process.env.GEIST_PASS || '';
+
 const POWER_RATE_CENTS = parseFloat(process.env.POWER_RATE_CENTS || '13.716');
 
 // Plugs that sit DOWNSTREAM of another metered plug. Dilithium is fed from a UPS
@@ -783,6 +792,60 @@ async function fetchUps() {
   return upsList;
 }
 
+function geistGet(path) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(GEIST_URL);
+    const transport = u.protocol === 'https:' ? https : http;
+    const req = transport.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path,
+      method: 'GET',
+      rejectUnauthorized: false,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Basic ${Buffer.from(`${GEIST_USER}:${GEIST_PASS}`).toString('base64')}`,
+      },
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try { resolve({ ok: res.statusCode < 400, data: JSON.parse(body) }); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(5000, () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
+
+async function fetchTemperature() {
+  try {
+    const res = await geistGet('/api/');
+    if (!res.ok || res.data?.retCode !== 0) return null;
+    const devs = res.data?.data?.dev;
+    if (!devs) return null;
+    const dev = Object.values(devs)[0];
+    if (!dev) return null;
+    const m = dev.entity?.[0]?.measurement;
+    if (!m) return null;
+    const triggers = Object.values(res.data?.data?.alarm?.trigger || {});
+    const highTrig = triggers.find(t => t.type === 'high' && t.path?.includes('measurement/0'));
+    return {
+      name:              dev.label || dev.name || 'Sensor',
+      location:          res.data?.data?.conf?.contact?.location || '',
+      temp_f:            parseFloat(m[0]?.value) || null,
+      humidity_pct:      parseFloat(m[1]?.value) || null,
+      dewpoint_f:        parseFloat(m[2]?.value) || null,
+      alarm_state:       dev.alarm?.state || 'none',
+      alarm_threshold_f: highTrig ? parseFloat(highTrig.threshold) : 90,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Kasa metered plugs (power) ──────────────────────────────────────────────
 // python-kasa exporter on union (10.0.5.73:9311) -> Prometheus job "kasa".
 // Only some plugs meter; kasa_power_watts simply won't exist for the others.
@@ -1145,13 +1208,14 @@ async function fetchUnraid() {
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
-  const [promResult, alertsResult, wanResult, pveResult, upsResult, powerResult, ctrResult, netdataResult, dbResult, redisResult, pgResult, serversResult, unraidResult] = await Promise.allSettled([
+  const [promResult, alertsResult, wanResult, pveResult, upsResult, powerResult, tempResult, ctrResult, netdataResult, dbResult, redisResult, pgResult, serversResult, unraidResult] = await Promise.allSettled([
     fetchPrometheus(),
     fetchAlerts(),
     fetchWan(),
     fetchProxmox(),
     fetchUps(),
     fetchKasa(),
+    fetchTemperature(),
     fetchContainers(),
     fetchNetdata(),
     fetchDatabases(),
@@ -1167,6 +1231,7 @@ app.get('/api/data', async (req, res) => {
   const pve     = pveResult.status     === 'fulfilled' ? pveResult.value     : null;
   const ups     = upsResult.status     === 'fulfilled' ? upsResult.value     : null;
   const power   = powerResult.status   === 'fulfilled' ? powerResult.value   : null;
+  const temperature = tempResult.status === 'fulfilled' ? tempResult.value   : null;
   const ctr     = ctrResult.status     === 'fulfilled' ? ctrResult.value     : null;
   const netdata = netdataResult.status === 'fulfilled' ? netdataResult.value : null;
   const mysqlDbs = dbResult.status     === 'fulfilled' ? dbResult.value      : null;
@@ -1189,6 +1254,7 @@ app.get('/api/data', async (req, res) => {
     pve,
     ups,
     power,
+    temperature,
     containers: ctr,
     netdata,
     databases,
@@ -1201,6 +1267,7 @@ app.get('/api/data', async (req, res) => {
       pve:         pve    ? null : 'unavailable',
       ups:         ups    ? null : 'unavailable',
       power:       power  ? null : 'unavailable',
+      temperature: temperature ? null : 'unavailable',
       containers:  ctr    ? null : 'unavailable',
       netdata:     netdata ? null : 'unavailable',
       databases:   databases ? null : 'unavailable',
