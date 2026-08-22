@@ -8,8 +8,8 @@ Automatic public IP updates for firewall hostnames via `favonia/cloudflare-ddns`
 
 | Hostname | Site | Host | Public IP (at deploy) |
 |---|---|---|---|
-| `stop.example.com` | Hawk House | containy (10.0.3.11) | 97.94.232.123 |
-| `halt.example.com` | The Fort | union (10.0.4.8) | 174.31.10.213 |
+| `stop.example.com` | Hawk House | containy (10.0.3.11) | 192.0.2.11 |
+| `halt.example.com` | The Fort | union (10.0.4.8) | 192.0.2.12 |
 
 ---
 
