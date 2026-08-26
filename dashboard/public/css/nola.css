@@ -1932,3 +1932,23 @@ a { color: var(--accent); text-decoration: none; }
   color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;
   letter-spacing: 0.05em; margin-right: 2px;
 }
+
+/* ─── AI Cost card ─── */
+.aicost-body { display: flex; flex-direction: column; gap: 0.6rem; }
+.aicost-main { display: flex; align-items: baseline; gap: 0.35rem; }
+.aicost-value { font-size: 2rem; font-weight: 600; line-height: 1; }
+.aicost-rows { display: flex; flex-direction: column; gap: 0.25rem; }
+.aicost-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  gap: 0.4rem;
+  align-items: baseline;
+  font-size: 0.78rem;
+}
+.aicost-wf {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.aicost-model { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aicost-tokens, .aicost-cache { opacity: 0.6; font-variant-numeric: tabular-nums; }
+.aicost-cost { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+.aicost-no-data { opacity: 0.6; font-size: 0.8rem; }

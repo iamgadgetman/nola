@@ -17,6 +17,7 @@ const INFLUXDB_URL   = process.env.INFLUXDB_URL   || 'http://10.0.6.39:8086';
 const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN;
 const INFLUXDB_ORG   = process.env.INFLUXDB_ORG   || 'galaxy-lab';
 const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || 'opnsense';
+const INFLUXDB_AI_BUCKET = process.env.INFLUXDB_AI_BUCKET || 'ai_cost';
 // WAN interface name on both OPNsense firewalls (verified: em0 is highest-traffic iface)
 const WAN_INTERFACE  = process.env.WAN_INTERFACE  || 'em0';
 
@@ -384,6 +385,106 @@ function parseWanCsv(csv) {
         rx_mbps: byHost[h].rx_mbps,
         tx_mbps: byHost[h].tx_mbps,
       })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+// ─── AI cost ────────────────────────────────────────────────────────────────────────────
+// Token spend written by the n8n workflows that call the Anthropic API. The
+// point schema is owned by scripts/log-ai-cost.sh - measurement `ai_cost`,
+// tagged by workflow and model. It lives in its own bucket because
+// INFLUXDB_BUCKET carries firewall telemetry on unrelated retention.
+async function fetchAiCost() {
+  if (!INFLUXDB_TOKEN) return null;
+
+  // Sum each field per workflow+model over the trailing 30 days. sum() drops
+  // _time, so the result is one row per (workflow, model, field).
+  const fluxQuery = `
+from(bucket: "${INFLUXDB_AI_BUCKET}")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "ai_cost")
+  |> filter(fn: (r) => r._field == "cost_microdollars"
+      or r._field == "input_tokens"      or r._field == "output_tokens"
+      or r._field == "cache_read_tokens" or r._field == "cache_write_tokens")
+  |> group(columns: ["workflow", "model", "_field"])
+  |> sum()
+  |> group()
+`;
+  try {
+    const res = await withTimeout(fetch(
+      `${INFLUXDB_URL}/api/v2/query?org=${INFLUXDB_ORG}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${INFLUXDB_TOKEN}`,
+          'Content-Type': 'application/vnd.flux',
+          Accept: 'application/csv',
+        },
+        body: fluxQuery,
+      }
+    ), 8000);
+    if (!res.ok) return null;
+    const csv = await res.text();
+    return parseAiCostCsv(csv);
+  } catch {
+    return null;
+  }
+}
+
+function parseAiCostCsv(csv) {
+  try {
+    const lines = csv.replace(/\r/g, '').split('\n').filter(l => l.trim() && !l.startsWith('#'));
+    if (!lines.length) return null;
+
+    const headers  = lines[0].split(',');
+    const fieldIdx = headers.indexOf('_field');
+    const valueIdx = headers.indexOf('_value');
+    const wfIdx    = headers.indexOf('workflow');
+    const modelIdx = headers.indexOf('model');
+    if (fieldIdx < 0 || valueIdx < 0) return null;
+
+    const byKey = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols  = lines[i].split(',');
+      const field = cols[fieldIdx];
+      const value = parseFloat(cols[valueIdx]);
+      if (!field || !isFinite(value)) continue;
+      const workflow = (wfIdx    >= 0 ? cols[wfIdx]    : '') || 'unknown';
+      const model    = (modelIdx >= 0 ? cols[modelIdx] : '') || 'unknown';
+      const key = `${workflow}\u0000${model}`;
+      if (!byKey[key]) {
+        byKey[key] = {
+          workflow, model,
+          cost_microdollars: 0, input_tokens: 0, output_tokens: 0,
+          cache_read_tokens: 0, cache_write_tokens: 0,
+        };
+      }
+      if (field in byKey[key]) byKey[key][field] += value;
+    }
+
+    const rows = Object.values(byKey)
+      .map(r => ({
+        workflow: r.workflow,
+        model:    r.model,
+        // Cost is stored in micro-dollars to keep it an integer in InfluxDB.
+        cost_usd: r.cost_microdollars / 1e6,
+        input_tokens:       r.input_tokens,
+        output_tokens:      r.output_tokens,
+        cache_read_tokens:  r.cache_read_tokens,
+        cache_write_tokens: r.cache_write_tokens,
+      }))
+      .sort((a, b) => b.cost_usd - a.cost_usd);
+
+    return {
+      window_days: 30,
+      total_usd:   rows.reduce((sum, r) => sum + r.cost_usd, 0),
+      // Zero across the board until a workflow actually enables prompt caching;
+      // the card uses this to decide whether the cache columns are worth showing.
+      cache_active: rows.some(r => r.cache_read_tokens > 0 || r.cache_write_tokens > 0),
+      rows,
     };
   } catch {
     return null;
@@ -1294,6 +1395,12 @@ app.get('/api/cpu-history', async (req, res) => {
     })),
   }));
   res.json(series);
+});
+
+app.get('/api/ai-cost', async (req, res) => {
+  const data = await fetchAiCost();
+  if (!data) return res.status(503).json({ error: 'ai cost unavailable' });
+  res.json(data);
 });
 
 app.get('/api/health', (req, res) => {

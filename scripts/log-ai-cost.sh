@@ -37,8 +37,8 @@ CACHE_WRITE_TOKENS="${6:-0}"
 # Anthropic first-party API list prices, USD per 1M tokens. Verified 2026-08-20.
 # Costs are priced at the moment the event is logged, so the Sonnet 5 intro
 # window below resolves against today's date and lapses on its own.
-# Note: cache reads/writes are not modelled — this script only receives plain
-# input/output counts, so anything using prompt caching is undercounted.
+# Cache reads/writes are modelled below as multipliers on the input rate; see
+# CACHE_READ_CPM / CACHE_WRITE_CPM.
 case "$MODEL" in
   *haiku*)    INPUT_CPM="1.00";  OUTPUT_CPM="5.00"  ;;
   # Sonnet 5 introductory pricing is $2/$10 through 2026-08-31, list is $3/$15.
