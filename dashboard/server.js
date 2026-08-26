@@ -434,10 +434,18 @@ from(bucket: "${INFLUXDB_AI_BUCKET}")
   }
 }
 
+function emptyAiCostRollup() {
+  return { window_days: 30, total_usd: 0, cache_active: false, rows: [] };
+}
+
 function parseAiCostCsv(csv) {
   try {
     const lines = csv.replace(/\r/g, '').split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    if (!lines.length) return null;
+    // Influx answers an empty bucket with a body that is blank once the `#`
+    // annotation lines are stripped. That means nothing has been logged yet -
+    // a real state, not a fault. Transport and HTTP failures never reach this
+    // function; fetchAiCost returns null for those.
+    if (!lines.length) return emptyAiCostRollup();
 
     const headers  = lines[0].split(',');
     const fieldIdx = headers.indexOf('_field');
