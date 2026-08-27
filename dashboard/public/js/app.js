@@ -90,6 +90,7 @@ async function loadData() {
 
     renderDashboard(state);
     loadPatching();          // own endpoint, own failure mode — never awaited here
+    loadAiCost();            // same rationale — Influx being down must not blank the page
     renderCpuChart(history);
     renderWanChart(state.wan);
     if (kioskActive) renderKiosk(state);
@@ -652,6 +653,77 @@ function renderContainers(ctr) {
   } else {
     body.innerHTML = `<div class="ctr-grid">${ctr.containers.map(renderContainerRow).join('')}</div>`;
   }
+}
+
+
+// ─── AI Cost Card ─────────────────────────
+// Fed by /api/ai-cost, which rolls up the `ai_cost` measurement written by the
+// n8n workflows that call the Anthropic API. Independent of /api/data on
+// purpose: InfluxDB being unreachable must not take the dashboard down.
+async function loadAiCost() {
+  try {
+    const res = await fetch('/api/ai-cost');
+    if (!res.ok) return renderAiCost(null);
+    renderAiCost(await res.json());
+  } catch (err) {
+    console.error('[nola] ai-cost fetch error:', err);
+    renderAiCost(null);
+  }
+}
+
+function fmtUsd(n) {
+  if (!isFinite(n)) return '\u2014';
+  // Sub-cent totals read as $0.00, which looks broken rather than cheap.
+  if (n > 0 && n < 0.01) return '<$0.01';
+  return '$' + n.toFixed(2);
+}
+
+function fmtTokens(n) {
+  if (!isFinite(n) || n <= 0) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+  return String(Math.round(n));
+}
+
+function renderAiCost(d) {
+  const total = document.getElementById('aicost-total');
+  const rows  = document.getElementById('aicost-rows');
+  const badge = document.getElementById('aicost-badge');
+  const card  = document.getElementById('card-aicost');
+  if (!total || !rows) return;
+
+  if (!d) {
+    total.textContent = '\u2014';
+    rows.innerHTML = '<div class="aicost-no-data">Unavailable</div>';
+    if (card) card.style.opacity = '0.4';
+    return;
+  }
+  if (card) card.style.opacity = '';
+  if (badge) badge.textContent = `last ${d.window_days}d`;
+
+  total.innerHTML = fmtUsd(d.total_usd);
+
+  if (!d.rows || !d.rows.length) {
+    // Nothing logged yet is a real state, not an error - say so plainly.
+    rows.innerHTML = '<div class="aicost-no-data">No spend logged yet</div>';
+    return;
+  }
+
+  rows.innerHTML = d.rows.slice(0, 6).map(r => {
+    // Cache columns stay hidden until some workflow actually enables prompt
+    // caching, otherwise every row would carry a meaningless pair of zeroes.
+    const cache = d.cache_active
+      ? `<span class="aicost-cache">cache ${fmtTokens(r.cache_read_tokens)}r/${fmtTokens(r.cache_write_tokens)}w</span>`
+      : '';
+    return `
+      <div class="aicost-row">
+        <span class="aicost-wf" title="${escHtml(r.workflow)}">${escHtml(r.workflow)}</span>
+        <span class="aicost-model">${escHtml(r.model)}</span>
+        <span class="aicost-tokens">${fmtTokens(r.input_tokens)}in/${fmtTokens(r.output_tokens)}out</span>
+        ${cache}
+        <span class="aicost-cost">${fmtUsd(r.cost_usd)}</span>
+      </div>`;
+  }).join('');
 }
 
 // ─── Patching Card ───────────────────────────────────────
